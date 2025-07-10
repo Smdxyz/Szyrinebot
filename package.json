@@ -1,0 +1,28 @@
+{
+  "name": "pepo-bot-ultra",
+  "version": "1.0.0",
+  "description": "WhatsApp Bot dengan fitur canggih",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "@firebase/app": "latest",
+    "@firebase/database": "latest",
+    "@firebase/storage": "latest",
+    "@hapi/boom": "latest",
+    "@itsukichan/baileys": "latest",
+    "axios": "latest",
+    "chalk": "latest",
+    "command-exists": "latest",
+    "dotenv": "latest",
+    "diskusage": "latest",
+    "fluent-ffmpeg": "latest",
+    "he": "latest",
+    "moment-duration-format": "^2.3.2",
+    "pino": "latest",
+    "string-similarity": "latest",
+    "wa-sticker-formatter": "latest"
+  }
+}
