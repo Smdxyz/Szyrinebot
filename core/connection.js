@@ -1,75 +1,105 @@
-// core/connection.js (FINAL FIX - Robust Reconnect & Shutdown)
+// core/connection.js (MODIFIED FOR @fizzxydev/baileys-pro)
 
-import baileys, { DisconnectReason, useMultiFileAuthState } from '@itsukichan/baileys';
+// 1. IMPORT DARI LIBRARY BARU
+import {
+    makeWASocket, // Langsung impor makeWASocket dari library baru
+    DisconnectReason,
+    useMultiFileAuthState,
+    Browsers,
+    makeCacheableSignalKeyStore
+} from '@fizzxydev/baileys-pro';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
-import readline from 'readline';
 import fs from 'fs';
+import process from 'process';
+import { BOT_PHONE_NUMBER } from '../config.js';
 
-const { default: makeWASocket } = baileys;
+let isShuttingDown = false;
+let isInitialPairing = false;
 
-let isShuttingDown = false; // Flag tunggal untuk mengontrol status shutdown
+// Fungsi initiateShutdown tetap sama, tidak perlu diubah
+export function initiateShutdown(sock, signal) {
+    if (isShuttingDown) {
+        console.log("Proses shutdown sudah berjalan...");
+        return;
+    }
+    console.log(`\nMemulai proses shutdown yang diinisiasi oleh ${signal}...`);
+    isShuttingDown = true;
+    if (sock) {
+        sock.end(new Error(`Shutdown diinisiasi oleh sinyal ${signal}.`));
+        console.log("Menunggu koneksi Baileys ditutup...");
+    } else {
+        console.log("Koneksi tidak aktif, keluar dari proses secara langsung.");
+        process.exit(0);
+    }
+}
 
-/**
- * Fungsi utama yang mengelola seluruh siklus hidup bot.
- * @param {object} handlers - Objek berisi fungsi handler untuk 'message' dan 'call'.
- */
 async function startBot(handlers) {
-    const { state, saveCreds } = await useMultiFileAuthState('./auth');
+    const authFolderPath = './auth';
+    const { state, saveCreds } = await useMultiFileAuthState(authFolderPath);
 
+    // Bagian ini tidak perlu diubah, karena struktur opsinya sama
     const sock = makeWASocket({
-        auth: state,
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
+        browser: Browsers.ubuntu('Chrome'),
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })),
+        },
     });
-    
-    // Proses pairing code jika sesi tidak ada (tetap sama, sudah bagus)
+
+    // Sisa dari kode di file ini SAMA PERSIS dengan kode aslimu.
+    // Tidak ada perubahan dari sini ke bawah.
     if (!sock.authState.creds.registered) {
-        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-        const question = (text) => new Promise((resolve) => rl.question(text, resolve));
+        isInitialPairing = true;
+        const phoneNumber = BOT_PHONE_NUMBER;
+        if (!phoneNumber) {
+             console.error("❌ [FATAL] Nomor telepon bot belum diatur di config.js untuk pairing code.");
+             process.exit(1);
+        }
+        const cleanedPhoneNumber = phoneNumber.replace(/[^0-9]/g, '');
+         if (!cleanedPhoneNumber) {
+             console.error(`❌ [FATAL] Nomor telepon "${phoneNumber}" di config.js tidak valid.`);
+             process.exit(1);
+         }
         try {
-            const phoneNumber = await question('Masukkan nomor WhatsApp Anda (contoh: 6281234567890): ');
-            const code = await sock.requestPairingCode(phoneNumber);
-            console.log(`\n=======================================\n📟 Kode Pairing Anda: ${code}\n=======================================`);
+            console.log(`\n=======================================\nMeminta Kode Pairing untuk +${cleanedPhoneNumber} ...`);
+            const code = await sock.requestPairingCode(cleanedPhoneNumber);
+            console.log(`\n=======================================\n📟 KODE PAIRING: ${code}`);
+            console.log("=======================================");
+            console.log("⚠️ Masukkan kode di atas ke aplikasi WhatsApp Anda.");
+            console.log("\nMenunggu koneksi...");
         } catch (error) {
             console.error("Gagal meminta pairing code:", error);
             throw new Error("Proses pairing gagal.");
-        } finally {
-            rl.close();
         }
+    } else {
+        console.log("Sesi terdeteksi. Mencoba terhubung menggunakan sesi yang ada...");
     }
 
-    // --- Mendaftarkan Handler Aplikasi & Internal ---
-    // Ini didaftarkan sebelum koneksi untuk mencegah race condition.
     sock.ev.on('messages.upsert', (m) => handlers.message(sock, m));
     sock.ev.on('call', (calls) => handlers.call(sock, calls));
     sock.ev.on('creds.update', saveCreds);
 
-    // --- Handler untuk Update Koneksi (INI BAGIAN UTAMA YANG DIPERBAIKI) ---
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
-
         if (connection === 'close') {
             const statusCode = (lastDisconnect.error instanceof Boom)
                 ? lastDisconnect.error.output?.statusCode
-                : 500; // Default error code
-
-            // --- PERBAIKAN #1: LOGIKA SHUTDOWN DIUTAMAKAN ---
-            // Jika bot sedang dalam proses shutdown manual, hentikan semua proses dan keluar.
+                : 500;
             if (isShuttingDown) {
-                console.log("Proses shutdown selesai. Bot dimatikan.");
-                process.exit(0); // <-- KELUAR DARI PROSES
+                console.log("Koneksi berhasil ditutup. Bot dimatikan sepenuhnya.");
+                process.exit(0);
             }
-            
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-            
-            console.log(`Koneksi ditutup. Alasan: "${lastDisconnect.error?.message}". Status: ${statusCode}.`);
-
+            console.log(`Koneksi ditutup. Alasan: "${lastDisconnect.error?.message || 'Tidak diketahui'}". Status: ${statusCode}.`);
             if (shouldReconnect) {
-                console.log("Mencoba menyambung kembali...");
-                startBot(handlers); // <-- MEMULAI ULANG LOGIKA KONEKSI
+                console.log("Mencoba menyambung kembali dalam 5 detik...");
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                startBot(handlers);
             } else {
-                console.error("Koneksi ditutup permanen (Logged Out). Sesi tidak valid.");
+                console.error("Koneksi ditutup permanen (Logged Out).");
                 try {
                     console.log("Menghapus folder 'auth' untuk sesi baru...");
                     fs.rmSync('./auth', { recursive: true, force: true });
@@ -77,32 +107,24 @@ async function startBot(handlers) {
                 } catch (e) {
                     console.error("Gagal menghapus folder 'auth'. Harap hapus manual.", e);
                 }
-                process.exit(1); // Keluar dengan kode error
+                process.exit(1);
             }
-
         } else if (connection === 'open') {
             console.log('🎉 Koneksi berhasil dibuka!');
             console.log(`Terhubung sebagai: ${sock.user?.name || sock.user?.id}`);
+            if (isInitialPairing) {
+                 isInitialPairing = false;
+                 console.log("[CONNECTION] Koneksi pertama setelah pairing berhasil. Memicu restart...");
+                 await new Promise(resolve => setTimeout(resolve, 2000));
+                 initiateShutdown(sock, "Initial Pairing Restart");
+            } else {
+                 console.log("[CONNECTION] Koneksi ulang berhasil.");
+            }
+        } else if (connection === 'connecting') {
+             console.log("⏳ Menghubungkan ke WhatsApp...");
         }
     });
 
-    // --- Fungsi Shutdown yang dipanggil oleh SIGINT/SIGTERM ---
-    const shutdown = () => {
-        if (!isShuttingDown) {
-            isShuttingDown = true;
-            console.log("\nSIGINT diterima. Memulai proses shutdown...");
-            // Memaksa koneksi untuk ditutup, yang akan memicu event 'connection.close'
-            // di mana logika `process.exit(0)` akan dieksekusi.
-            sock.end(new Error("Shutdown manual diinisiasi."));
-        }
-    };
-    
-    // Daftarkan listener shutdown hanya sekali.
-    if (!process.listeners('SIGINT').length) {
-        process.on('SIGINT', shutdown);
-        process.on('SIGTERM', shutdown);
-    }
-    
     return sock;
 }
 

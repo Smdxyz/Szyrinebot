@@ -1,6 +1,6 @@
 // /modules/uploader/tourl.js (Updated & Refactored)
 
-import { downloadContentFromMessage } from '@itsukichan/baileys';
+import { downloadContentFromMessage } from '@fizzxydev/baileys-pro'; // <-- NAMA LIBRARY BARU
 import { BOT_PREFIX } from '../../config.js';
 // Menggunakan library uploader yang sudah kita rapikan
 import { uploadToSzyrine } from '../../libs/apiUploader.js'; 

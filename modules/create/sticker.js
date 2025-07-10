@@ -1,56 +1,70 @@
 // /modules/creator/sticker.js - BIKIN STIKER DENGAN METADATA & SUPPORT GIF/VIDEO
 
 import { BOT_PREFIX } from '../../config.js';
-import { Sticker, StickerTypes } from 'wa-sticker-formatter'; // <-- Impor library-nya
-import { downloadContentFromMessage } from '@itsukichan/baileys'; // <-- Pastikan ini sesuai dengan library Baileys lu
+import { Sticker, StickerTypes } from 'wa-sticker-formatter';
+import { downloadContentFromMessage } from '@itsukichan/baileys';
+import { v4 as uuidv4 } from 'uuid';
 
 // --- FUNGSI UTAMA ---
 export default async function execute(sock, msg, args, text, sender) {
-    const packname = text.split('|')[0]?.trim() || 'Szyrine Bot'; // Ambil packname dari teks, atau pake default
-    const author = text.split('|')[1]?.trim() || 'Created by Sann'; // Ambil author, atau pake default
+    const packname = text.split('|')[0]?.trim() || 'Szyrine Bot';
+    const author = text.split('|')[1]?.trim() || 'Created by Sann';
     
-    // Cek apakah user me-reply gambar atau video
-    const repliedMessage = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    const messageType = repliedMessage ? Object.keys(repliedMessage)[0] : null;
+    // Objek pesan yang di-reply oleh pengguna
+    const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
 
-    if (!messageType || (messageType !== 'imageMessage' && messageType !== 'videoMessage')) {
+    let mediaMessage;
+    let mediaType;
+
+    // Logika ini secara eksplisit mencari media di lokasi yang benar,
+    // termasuk pesan standar dan pesan "View Once" (Lihat Sekali).
+    if (quoted?.imageMessage) {
+        mediaMessage = quoted.imageMessage;
+        mediaType = 'image';
+    } else if (quoted?.videoMessage) {
+        mediaMessage = quoted.videoMessage;
+        mediaType = 'video';
+    } else if (quoted?.viewOnceMessageV2?.message?.imageMessage) {
+        mediaMessage = quoted.viewOnceMessageV2.message.imageMessage;
+        mediaType = 'image';
+    } else if (quoted?.viewOnceMessageV2?.message?.videoMessage) {
+        mediaMessage = quoted.viewOnceMessageV2.message.videoMessage;
+        mediaType = 'video';
+    }
+
+    // Jika setelah semua pengecekan, media tidak ditemukan, kirim pesan error.
+    if (!mediaMessage) {
         return sock.sendMessage(sender, {
-            text: `Salah, bro! Reply gambar atau video/gif yang mau dijadiin stiker.\n\n*Contoh Penggunaan:*\nReply gambar/video, terus ketik:\n*${BOT_PREFIX}sticker Pack Gw|Author Gw*`
+            text: `Perintah salah! Reply gambar, video, atau media "Lihat Sekali" (View Once) yang ingin dijadikan stiker.\n\n*Contoh Penggunaan:*\nReply gambar/video, lalu ketik:\n*${BOT_PREFIX}sticker Pack Saya|Author Saya*`
         }, { quoted: msg });
     }
 
-    // Kasih tau user kalo lagi diproses
+    // Kasih tahu user kalau lagi diproses
     const processingMsg = await sock.sendMessage(sender, { text: 'Bentar, stikernya lagi dibikin... 👨‍🍳' }, { quoted: msg });
 
     try {
-        // Download media dari pesan yang di-reply
-        const stream = await downloadContentFromMessage(repliedMessage, messageType.replace('Message', ''));
+        // Download media menggunakan objek dan tipe yang sudah benar
+        const stream = await downloadContentFromMessage(mediaMessage, mediaType);
         
-        // Ubah stream jadi buffer
         let mediaBuffer = Buffer.from([]);
         for await (const chunk of stream) {
             mediaBuffer = Buffer.concat([mediaBuffer, chunk]);
         }
         
-        // Tentukan tipe stiker: animasi atau statis
-        const isAnimated = messageType === 'videoMessage';
-
-        // --- INI BAGIAN AJAIBNYA ---
-        // Buat instance Sticker dari library
+        // Buat instance Sticker
         const sticker = new Sticker(mediaBuffer, {
-            pack: packname,      // Nama pack stiker
-            author: author,      // Nama author stiker
-            type: StickerTypes.FULL, // Kualitas stiker (FULL atau CROP)
-            categories: ['🎉', '😊'], // Emoji kategori (opsional)
-            id: `szyrine-${Date.now()}`, // ID unik buat stiker (opsional)
-            quality: 70,         // Kualitas stiker (1-100)
-            background: 'transparent' // Background stiker (opsional)
+            pack: packname,
+            author: author,
+            type: StickerTypes.FULL,
+            categories: ['🎉', '😊'],
+            id: uuidv4(),
+            quality: 70,
+            background: 'transparent'
         });
 
-        // Konversi jadi buffer stiker .webp
         const stickerBuffer = await sticker.toBuffer();
 
-        // Kirim stiker!
+        // Kirim stiker
         await sock.sendMessage(sender, {
             sticker: stickerBuffer
         });
@@ -60,11 +74,15 @@ export default async function execute(sock, msg, args, text, sender) {
 
     } catch (error) {
         console.error('[ERROR STICKER]', error);
-        await sock.sendMessage(sender, {
-            text: `Aduh, gagal bikin stiker 😭\n*Penyebab:* ${error.message}`
-        }, { quoted: msg });
-        // Hapus pesan "memproses" jika error
+        
         await sock.sendMessage(sender, { delete: processingMsg.key });
+        
+        let errorMessage = `Aduh, gagal bikin stiker 😭\n*Penyebab:* ${error.message}`;
+        if (error.message?.includes('empty media key') || error.message?.includes('cannot derive')) {
+            errorMessage = 'Aduh, gagal bikin stiker 😭\nMedia yang Anda reply mungkin sudah terlalu lama (kadaluwarsa), merupakan "View Once" yang sudah dibuka, atau tidak bisa diunduh lagi.';
+        }
+        
+        await sock.sendMessage(sender, { text: errorMessage }, { quoted: msg });
     }
 }
 

@@ -1,6 +1,6 @@
 // /modules/images/upscale.js (Self-Contained)
 
-import { downloadContentFromMessage } from '@itsukichan/baileys';
+import { downloadContentFromMessage } from '@fizzxydev/baileys-pro'; // <-- NAMA LIBRARY BARU
 import { BOT_PREFIX } from '../../config.js';
 import axios from 'axios'; // Command ini juga butuh axios
 import { uploadToSzyrine } from '../../libs/apiUploader.js'; // Import fungsi upload yang sama

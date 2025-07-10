@@ -1,6 +1,6 @@
 // /modules/images/upscalepics.js (Preset System for Lazy People - The Best System)
 
-import { downloadContentFromMessage } from '@itsukichan/baileys';
+import { downloadContentFromMessage } from '@fizzxydev/baileys-pro'; // <-- NAMA LIBRARY BARU
 import { BOT_PREFIX } from '../../config.js';
 import { safeApiGet } from '../../libs/apiHelper.js';
 import { uploadToSzyrine } from '../../libs/apiUploader.js';

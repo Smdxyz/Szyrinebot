@@ -1,6 +1,6 @@
 // /modules/images/removebg.js (Self-Contained)
 
-import { downloadContentFromMessage } from '@itsukichan/baileys';
+import { downloadContentFromMessage } from '@fizzxydev/baileys-pro'; // <-- NAMA LIBRARY BARU
 import { BOT_PREFIX } from '../../config.js';
 import axios from 'axios'; // Command ini butuh axios untuk API call-nya
 import { uploadToSzyrine } from '../../libs/apiUploader.js'; // Import fungsi upload yang reusable

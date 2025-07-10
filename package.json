@@ -12,17 +12,17 @@
     "@firebase/database": "latest",
     "@firebase/storage": "latest",
     "@hapi/boom": "latest",
-    "@itsukichan/baileys": "latest",
+    "@fizzxydev/baileys-pro": "latest",
     "axios": "latest",
     "chalk": "latest",
     "command-exists": "latest",
     "dotenv": "latest",
-    "diskusage": "latest",
     "fluent-ffmpeg": "latest",
     "he": "latest",
     "moment-duration-format": "^2.3.2",
     "pino": "latest",
     "string-similarity": "latest",
+    "uuid": "latest",
     "wa-sticker-formatter": "latest"
   }
 }

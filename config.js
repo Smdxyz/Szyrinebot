@@ -3,13 +3,15 @@
 // --- PENGATURAN BOT DASAR ---
 export const BOT_NAME = 'SzyrineBotsID';
 export const BOT_OWNER = ['6283125905220']; // GANTI DENGAN NOMOR WA OWNER ASLI KAMU
+export const BOT_PHONE_NUMBER = '6283125905220'; // GANTI DENGAN NOMOR WA BOT KAMU (Format Internasional Tanpa +)
 export const BOT_PREFIX = '.';
 export const SESSION_NAME = 'session_szyrine';
 export const ANTI_CALL = true;
 export const BOT_MODE = 'private'; // 'public', 'private', 'self'
 
 // --- KODE PAIRING ---
-export const CUSTOM_PAIRING_CODE = "S4NNGNTG"; // Kamu bisa ganti jika mau
+// CUSTOM_PAIRING_CODE tidak lagi digunakan untuk pairing code Baileys, hanya custom ID jika perlu
+// export const CUSTOM_PAIRING_CODE = "S4NNGNTG"; // Tidak dipakai untuk pairing code Baileys otomatis
 
 // --- ANTI-SPAM & SIMILARITY ---
 export const SPAM_MESSAGE_LIMIT = 15;
