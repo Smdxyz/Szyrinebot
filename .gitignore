@@ -1,0 +1,6 @@
+node_modules/
+.env
+session.data.json
+*.sqlite
+temp/
+temp_downloads/
