@@ -1,4 +1,4 @@
-// play.js - VERSI FINAL: SEARCH & DOWNLOADER STABIL
+// /modules/downloaders/play.js (REVISI FINAL: SEARCH STABIL & PARSER MANDIRI)
 
 import { BOT_PREFIX } from '../../config.js';
 import ffmpeg from 'fluent-ffmpeg';
@@ -14,18 +14,16 @@ if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
 }
 
-// --- [FIX] Fungsi search sekarang pakai Google API yang WORK ---
+// [FIX] Fungsi search sekarang pakai Google API dari 'ytsearch.txt' yang WORK
 async function searchYouTube(query) {
     try {
-        // Menggunakan API search dari Google API yang sudah dikonfirmasi bekerja
         const res = await axios.get(`https://szyrineapi.biz.id/api/downloaders/yt/search?q=${encodeURIComponent(query)}`);
         
         if (res.data?.status === 200 && Array.isArray(res.data.result) && res.data.result.length > 0) {
-            // Mapping hasil agar konsisten, hanya ambil 5 hasil teratas
             return res.data.result.slice(0, 5).map(v => ({
                 title: he.decode(v.title || 'Judul Tidak Diketahui'),
                 channel: v.channel || v.author || 'Channel Tidak Diketahui',
-                url: v.url // URL video lengkap, ini yang kita butuhkan
+                url: v.url
             }));
         } else {
              console.warn(`[PLAY SEARCH] API search tidak mengembalikan hasil valid untuk query "${query}".`);
@@ -37,41 +35,58 @@ async function searchYouTube(query) {
     }
 }
 
-// --- [FIX] Parser Universal untuk semua kemungkinan respons API download ---
-function parseDownloadResult(data) {
-    if (!data || !data.result) {
-        console.warn("[PARSER] Data atau data.result tidak ditemukan.");
+// [STRATEGI BARU] Parser mandiri yang dibuat khusus untuk command play.
+function parsePlayDownloadResult(providerName, rawData) {
+    console.log(`[PLAY PARSER] Mencoba parse untuk provider: ${providerName}`);
+    if (!rawData || rawData.status !== 200 || !rawData.result) {
+        console.warn(`[PLAY PARSER] Provider ${providerName}: Data mentah tidak valid.`);
         return null;
     }
-    const res = data.result;
     
-    // Mencoba semua kemungkinan kunci untuk link download
-    const downloadLink = 
-        res.url ||                  // Prioritas utama (v1, flvto)
-        res.link ||                 // (mp3-scrape)
-        res.download ||
-        res.downloadURL ||          // (v2)
-        res.downloadUrl ||          // (v4, di dalam `data`)
-        res.download_url ||         // (notube)
-        res.data?.downloadUrl;      // (v4, akses aman jika `data` ada)
+    const res = rawData.result;
+    let downloadLink = null;
+    let title = null;
 
-    // Mencoba semua kemungkinan kunci untuk judul
-    const title = 
-        res.title ||                // Prioritas utama
-        res.filename ||             // (mp3-scrape)
-        res.data?.title;            // (v4)
+    switch (providerName) {
+        case 'FLVTO':
+            title = res.title;
+            downloadLink = res.url;
+            break;
+        case 'Scrape':
+            title = res.filename;
+            downloadLink = res.link;
+            break;
+        case 'Notube':
+            title = res.title;
+            downloadLink = res.download_url;
+            break;
+        case 'v4':
+            title = res.data?.title;
+            downloadLink = res.data?.downloadUrl;
+            break;
+        case 'v2':
+            title = res.title;
+            downloadLink = res.downloadURL;
+            break;
+        case 'v1':
+            title = res.title;
+            downloadLink = res.url;
+            break;
+        default:
+            return null;
+    }
 
-    // Hanya kembalikan jika link download ditemukan
     if (downloadLink) {
+        console.log(`[PLAY PARSER] Sukses! Link ditemukan untuk ${providerName}.`);
         return { downloadLink, title: title || "Judul Tidak Diketahui" };
     }
     
-    console.warn("[PARSER] Gagal menemukan link download dari respons:", JSON.stringify(res, null, 2));
+    console.warn(`[PLAY PARSER] Gagal menemukan link download dari provider ${providerName}`);
     return null;
 }
 
 
-// --- [UPGRADE] Daftar API downloader diperbanyak dan diurutkan ---
+// [UPGRADE] Daftar API downloader diurutkan dan menggunakan parser mandiri
 async function downloadYouTubeMp3(youtubeUrl) {
     const videoIdMatch = youtubeUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/);
     const videoId = videoIdMatch ? videoIdMatch[1] : null;
@@ -90,8 +105,8 @@ async function downloadYouTubeMp3(youtubeUrl) {
             console.log(`[PLAY DOWNLOAD] Mencoba via: ${apiInfo.name}`);
             const res = await axios.get(apiInfo.url, { timeout: 180000 });
             
-            // Gunakan parser universal yang baru
-            const downloadInfo = parseDownloadResult(res.data);
+            // Gunakan parser mandiri kita
+            const downloadInfo = parsePlayDownloadResult(apiInfo.name, res.data);
 
             if (downloadInfo && downloadInfo.downloadLink) {
                 const filename = `${Date.now()}_raw`;
@@ -114,7 +129,7 @@ async function downloadYouTubeMp3(youtubeUrl) {
                 });
 
                 const downloadedStats = await fsPromises.stat(inputPath);
-                if (downloadedStats.size < 10240) {
+                if (downloadedStats.size < 10240) { // Cek file korup
                      await fsPromises.unlink(inputPath).catch(e => {});
                      throw new Error(`File dari ${apiInfo.name} rusak atau terlalu kecil.`);
                 }
@@ -122,7 +137,7 @@ async function downloadYouTubeMp3(youtubeUrl) {
                 console.log(`[PLAY DOWNLOAD] Berhasil mengunduh dari ${apiInfo.name}.`);
                 return { filePath: inputPath, title: downloadInfo.title };
             } else {
-                console.warn(`[PLAY DOWNLOAD] ${apiInfo.name} tidak memberikan link valid.`);
+                console.warn(`[PLAY DOWNLOAD] ${apiInfo.name} tidak memberikan link valid setelah di-parse.`);
             }
         } catch (e) {
             console.error(`[PLAY DOWNLOAD] Gagal total dari ${apiInfo.name}:`, e.message);

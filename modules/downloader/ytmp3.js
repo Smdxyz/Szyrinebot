@@ -1,7 +1,6 @@
-// /modules/downloaders/ytmp3.js (REVISI FINAL: PARSER UNIVERSAL & CLEANED)
+// /modules/downloaders/ytmp3.js (REVISI FINAL: PARSER MANDIRI & STABIL)
 
 import { BOT_PREFIX } from '../../config.js';
-import { safeApiGet } from '../../libs/apiHelper.js';
 import { formatBytes } from '../../core/handler.js';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
@@ -20,36 +19,50 @@ function getYouTubeVideoId(url) {
     return match ? match[1] : null;
 }
 
-function getYouTubeThumbnail(videoId) {
-    if (!videoId) return null;
-    return `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
-}
-
-// --- [FIX] Parser Universal yang sama seperti di play.js, tapi untuk ytmp3.js ---
-function parseDownloadResult(providerKey, data) {
+// [STRATEGI BARU] Parser mandiri yang dibuat khusus untuk ytmp3.
+function parseYtmp3Result(providerKey, rawData) {
     console.log(`[YTMP3 PARSER] Mencoba parse untuk provider: ${providerKey}`);
-    if (!data || !data.result) {
-        console.warn(`[YTMP3 PARSER] Provider ${providerKey}: Data atau data.result tidak ditemukan.`);
+    if (!rawData || rawData.status !== 200 || !rawData.result) {
+        console.warn(`[YTMP3 PARSER] Provider ${providerKey}: Data mentah tidak valid atau status bukan 200.`);
         return null;
     }
     
-    const res = data.result;
-    
-    const downloadLink = 
-        res.url ||
-        res.link ||
-        res.download ||
-        res.downloadURL ||
-        res.download_url ||
-        res.data?.downloadUrl;
+    const res = rawData.result;
+    let downloadLink = null;
+    let title = null;
 
-    const title = 
-        res.title ||
-        res.filename ||
-        res.data?.title;
+    switch (providerKey) {
+        case 's_flvto':
+            title = res.title;
+            downloadLink = res.url;
+            break;
+        case 's0': // mp3-scrape
+            title = res.filename;
+            downloadLink = res.link;
+            break;
+        case 's_notube':
+            title = res.title;
+            downloadLink = res.download_url;
+            break;
+        case 's4': // mp3-v4
+            title = res.data?.title;
+            downloadLink = res.data?.downloadUrl;
+            break;
+        case 's2': // mp3-v2
+            title = res.title;
+            downloadLink = res.downloadURL;
+            break;
+        case 's1': // mp3-v1
+            title = res.title;
+            downloadLink = res.url;
+            break;
+        default:
+            console.warn(`[YTMP3 PARSER] Key provider tidak dikenal: ${providerKey}`);
+            return null;
+    }
 
     if (downloadLink) {
-        console.log(`[YTMP3 PARSER] Sukses! Link ditemukan.`);
+        console.log(`[YTMP3 PARSER] Sukses! Link ditemukan untuk ${providerKey}.`);
         return { url: downloadLink, title: title || 'Audio dari YouTube' };
     }
     
@@ -86,22 +99,21 @@ async function processAudioDownload(sock, msg, youtubeUrl) {
                     ? `${provider.url}?id=${videoId}&format=mp3`
                     : `${provider.url}?url=${encodeURIComponent(youtubeUrl)}`;
 
-                const apiResult = await safeApiGet(apiUrl);
+                // Panggil axios langsung, bukan safeApiGet.
+                const apiResponse = await axios.get(apiUrl, { timeout: 120000 });
                 
-                // ======================================================================
-                // [FIX] Cara pemanggilan parser disederhanakan, tidak perlu dibungkus
-                //       objek { result: ... } lagi.
-                // ======================================================================
-                downloadInfo = parseDownloadResult(provider.key, apiResult);
+                // Panggil parser baru kita dengan data mentah dari axios
+                downloadInfo = parseYtmp3Result(provider.key, apiResponse.data);
 
                 if (downloadInfo && downloadInfo.url) {
                     await sock.sendMessage(sender, { text: `✅ Berhasil dapat link dari *${provider.name}*.\n*Judul:* ${downloadInfo.title}`, edit: progressKey });
                     break;
                 } else {
-                    console.warn(`[YTMP3] Provider ${provider.name} tidak mengembalikan link valid.`);
+                    console.warn(`[YTMP3] Provider ${provider.name} tidak mengembalikan link valid setelah parsing.`);
                 }
             } catch (apiError) {
                 console.error(`[YTMP3] Error dari provider ${provider.name}:`, apiError.message);
+                 await sock.sendMessage(sender, { text: `❌ Server ${provider.name} gagal. Coba server lain...`, edit: progressKey });
             }
         }
 
@@ -122,7 +134,7 @@ async function processAudioDownload(sock, msg, youtubeUrl) {
         });
 
         const outputStats = await fsPromises.stat(outputPath);
-        if (outputStats.size < 51200) {
+        if (outputStats.size < 10240) { // Cek file korup/kecil
             throw new Error(`Hasil konversi MP3 terlalu kecil atau rusak.`);
         }
 
