@@ -1,4 +1,4 @@
-// /modules/downloaders/ytmp3.js (REVISI FINAL: PARSER MANDIRI & STABIL)
+// /modules/downloaders/ytmp3.js (REVISI ULTIMATE: URL Stream > Buffer > FFmpeg)
 
 import { BOT_PREFIX } from '../../config.js';
 import { formatBytes } from '../../core/handler.js';
@@ -19,64 +19,27 @@ function getYouTubeVideoId(url) {
     return match ? match[1] : null;
 }
 
-// [STRATEGI BARU] Parser mandiri yang dibuat khusus untuk ytmp3.
+// Parser mandiri (tidak berubah)
 function parseYtmp3Result(providerKey, rawData) {
-    console.log(`[YTMP3 PARSER] Mencoba parse untuk provider: ${providerKey}`);
-    if (!rawData || rawData.status !== 200 || !rawData.result) {
-        console.warn(`[YTMP3 PARSER] Provider ${providerKey}: Data mentah tidak valid atau status bukan 200.`);
-        return null;
-    }
-    
+    if (!rawData || rawData.status !== 200 || !rawData.result) return null;
     const res = rawData.result;
-    let downloadLink = null;
-    let title = null;
-
+    let downloadLink = null, title = null;
     switch (providerKey) {
-        case 's_flvto':
-            title = res.title;
-            downloadLink = res.url;
-            break;
-        case 's0': // mp3-scrape
-            title = res.filename;
-            downloadLink = res.link;
-            break;
-        case 's_notube':
-            title = res.title;
-            downloadLink = res.download_url;
-            break;
-        case 's4': // mp3-v4
-            title = res.data?.title;
-            downloadLink = res.data?.downloadUrl;
-            break;
-        case 's2': // mp3-v2
-            title = res.title;
-            downloadLink = res.downloadURL;
-            break;
-        case 's1': // mp3-v1
-            title = res.title;
-            downloadLink = res.url;
-            break;
-        default:
-            console.warn(`[YTMP3 PARSER] Key provider tidak dikenal: ${providerKey}`);
-            return null;
+        case 's0': title = res.filename; downloadLink = res.link; break;
+        case 's_flvto': title = res.title; downloadLink = res.url; break;
+        case 's1': title = res.title; downloadLink = res.url; break;
+        case 's_notube': title = res.title; downloadLink = res.download_url; break;
+        default: return null;
     }
-
-    if (downloadLink) {
-        console.log(`[YTMP3 PARSER] Sukses! Link ditemukan untuk ${providerKey}.`);
-        return { url: downloadLink, title: title || 'Audio dari YouTube' };
-    }
-    
-    console.warn(`[YTMP3 PARSER] Gagal menemukan link download valid dari provider ${providerKey}`);
+    if (downloadLink) return { url: downloadLink, title: title || 'Audio dari YouTube' };
     return null;
 }
 
 const API_PROVIDERS = [
-    { name: 'Server Stabil (FLVTO)', key: 's_flvto', url: 'https://szyrineapi.biz.id/api/downloaders/yt/dl/flvto' },
-    { name: 'Server Cepat (Scrape)', key: 's0', url: 'https://szyrineapi.biz.id/api/downloaders/yt/mp3-scrape' },
-    { name: 'Server Cadangan (Notube)', key: 's_notube', url: 'https://szyrineapi.biz.id/api/downloaders/yt/dl/notube' },
-    { name: 'Server v4', key: 's4', url: 'https://szyrineapi.biz.id/api/downloaders/yt/mp3-v4' },
-    { name: 'Server v2', key: 's2', url: 'https://szyrineapi.biz.id/api/downloaders/yt/mp3-v2' },
-    { name: 'Server v1', key: 's1', url: 'https://szyrineapi.biz.id/api/downloaders/yt/mp3-v1' },
+    { name: 'Server Cepat (Scrape)', key: 's0', url: 'https://szyrineapi.biz.id/api/downloaders/yt/mp3-scrape', requiresFFmpeg: false },
+    { name: 'Server Stabil (FLVTO)', key: 's_flvto', url: 'https://szyrineapi.biz.id/api/downloaders/yt/dl/flvto', requiresFFmpeg: false },
+    { name: 'Server v1', key: 's1', url: 'https://szyrineapi.biz.id/api/downloaders/yt/mp3-v1', requiresFFmpeg: false },
+    { name: 'Server Cadangan (Notube)', key: 's_notube', url: 'https://szyrineapi.biz.id/api/downloaders/yt/dl/notube', requiresFFmpeg: true },
 ];
 
 async function processAudioDownload(sock, msg, youtubeUrl) {
@@ -88,93 +51,114 @@ async function processAudioDownload(sock, msg, youtubeUrl) {
 
     const progressMessage = await sock.sendMessage(sender, { text: `⏳ Oke, sedang memproses permintaan...` }, { quoted: msg });
     const progressKey = progressMessage.key;
-    const outputPath = path.join(tempDir, `${Date.now()}_output.mp3`);
+    const editMsg = (text) => sock.sendMessage(sender, { text: text, edit: progressKey });
+    
     let downloadInfo = null;
+    let chosenProvider = null;
+    let tempFilePath = '';
 
     try {
+        // Step 1: Cari provider yang berfungsi
         for (const provider of API_PROVIDERS) {
             try {
-                await sock.sendMessage(sender, { text: `🎲 Mencoba server: *${provider.name}*...`, edit: progressKey });
+                await editMsg(`🎲 Mencoba server: *${provider.name}*...`);
                 let apiUrl = (provider.key === 's_notube')
                     ? `${provider.url}?id=${videoId}&format=mp3`
                     : `${provider.url}?url=${encodeURIComponent(youtubeUrl)}`;
-
-                // Panggil axios langsung, bukan safeApiGet.
                 const apiResponse = await axios.get(apiUrl, { timeout: 120000 });
-                
-                // Panggil parser baru kita dengan data mentah dari axios
-                downloadInfo = parseYtmp3Result(provider.key, apiResponse.data);
-
-                if (downloadInfo && downloadInfo.url) {
-                    await sock.sendMessage(sender, { text: `✅ Berhasil dapat link dari *${provider.name}*.\n*Judul:* ${downloadInfo.title}`, edit: progressKey });
+                const parsedInfo = parseYtmp3Result(provider.key, apiResponse.data);
+                if (parsedInfo && parsedInfo.url) {
+                    downloadInfo = parsedInfo;
+                    chosenProvider = provider;
                     break;
-                } else {
-                    console.warn(`[YTMP3] Provider ${provider.name} tidak mengembalikan link valid setelah parsing.`);
                 }
             } catch (apiError) {
                 console.error(`[YTMP3] Error dari provider ${provider.name}:`, apiError.message);
-                 await sock.sendMessage(sender, { text: `❌ Server ${provider.name} gagal. Coba server lain...`, edit: progressKey });
             }
         }
+        if (!downloadInfo || !chosenProvider) throw new Error("Gagal mendapatkan link setelah mencoba semua server.");
 
-        if (!downloadInfo || !downloadInfo.url) {
-            throw new Error("Gagal mendapatkan link unduhan setelah mencoba semua server.");
+        // Step 2: Eksekusi berdasarkan tipe provider
+        const cleanTitle = downloadInfo.title.replace(/[^\w\s.-]/gi, '') || 'youtube-audio';
+
+        if (!chosenProvider.requiresFFmpeg) {
+            // --- JALUR CEPAT & EFISIEN (TANPA FFmpeg) ---
+            try {
+                // PRIORITAS #1: KIRIM VIA URL (GOLDEN PATH)
+                await editMsg(`✅ Link didapat. Mencoba kirim audio via stream langsung...`);
+                await sock.sendMessage(sender, {
+                    audio: { url: downloadInfo.url },
+                    mimetype: 'audio/mpeg',
+                    fileName: `${cleanTitle}.mp3`,
+                }, { quoted: msg });
+                await editMsg(`✅ Berhasil dikirim via stream!`);
+                return; // Selesai! Keluar dari fungsi.
+
+            } catch (streamError) {
+                // PRIORITAS #2: Jika stream gagal, unduh manual (BACKUP PLAN)
+                console.warn(`[YTMP3] Gagal kirim via URL, mencoba metode backup (download buffer)...`, streamError.message);
+                await editMsg(`⚠️ Stream gagal. Mencoba metode backup (download manual)...`);
+                
+                const response = await axios.get(downloadInfo.url, { responseType: 'arraybuffer', timeout: 300000 });
+                const audioBuffer = response.data;
+                const fileSize = audioBuffer.length;
+
+                if (fileSize < 10240) throw new Error(`Hasil unduhan terlalu kecil atau rusak.`);
+                
+                await sock.sendMessage(sender, {
+                    audio: audioBuffer,
+                    mimetype: 'audio/mpeg',
+                    fileName: `${cleanTitle}.mp3`,
+                }, { quoted: msg });
+
+                const infoText = `✅ *Proses Selesai!* (Backup)\n\n*Judul:* ${downloadInfo.title}\n*Ukuran File:* ${formatBytes(fileSize)}`;
+                await editMsg(infoText);
+            }
+        } else {
+            // --- JALUR LAMBAT (LAST RESORT DENGAN FFmpeg) ---
+            await editMsg(`📥 Mengunduh & butuh konversi via FFmpeg...`);
+            tempFilePath = path.join(tempDir, `${Date.now()}_${cleanTitle}.mp3`);
+            const response = await axios({ method: 'GET', url: downloadInfo.url, responseType: 'stream', timeout: 300000 });
+
+            await new Promise((resolve, reject) => {
+                fluent(response.data)
+                    .audioCodec('libmp3lame').audioBitrate('128k').format('mp3')
+                    .on('error', (err) => reject(new Error(`FFmpeg gagal: ${err.message}`)))
+                    .on('end', resolve)
+                    .save(tempFilePath);
+            });
+            
+            const stats = await fsPromises.stat(tempFilePath);
+            if (stats.size < 10240) throw new Error(`Hasil konversi FFmpeg terlalu kecil.`);
+            
+            await sock.sendMessage(sender, {
+                audio: await fsPromises.readFile(tempFilePath),
+                mimetype: 'audio/mpeg',
+                fileName: `${cleanTitle}.mp3`,
+            }, { quoted: msg });
+
+            const infoText = `✅ *Proses Selesai!* (FFmpeg)\n\n*Judul:* ${downloadInfo.title}\n*Ukuran File:* ${formatBytes(stats.size)}`;
+            await editMsg(infoText);
         }
-
-        await sock.sendMessage(sender, { text: `📥 Mengunduh & mengonversi audio...`, edit: progressKey });
-        
-        const response = await axios({ method: 'GET', url: downloadInfo.url, responseType: 'stream', timeout: 300000 });
-
-        await new Promise((resolve, reject) => {
-            fluent(response.data)
-                .audioCodec('libmp3lame').audioBitrate('128k').format('mp3')
-                .on('error', (err) => reject(new Error(`FFmpeg gagal konversi: ${err.message}`)))
-                .on('end', resolve)
-                .pipe(fs.createWriteStream(outputPath), { end: true });
-        });
-
-        const outputStats = await fsPromises.stat(outputPath);
-        if (outputStats.size < 10240) { // Cek file korup/kecil
-            throw new Error(`Hasil konversi MP3 terlalu kecil atau rusak.`);
-        }
-
-        const audioBuffer = await fsPromises.readFile(outputPath);
-
-        await sock.sendMessage(sender, {
-            audio: audioBuffer,
-            mimetype: 'audio/mpeg',
-            fileName: `${downloadInfo.title.replace(/[^\w\s.-]/gi, '')}.mp3`,
-        }, { quoted: msg });
-
-        const infoText = `✅ *Proses Selesai!*\n\n*Judul:* ${downloadInfo.title}\n*Ukuran File:* ${formatBytes(outputStats.size)}`;
-        await sock.sendMessage(sender, { text: infoText, edit: progressKey });
 
     } catch (error) {
         console.error(`[YTMP3] Proses gagal total:`, error);
-        const errorMessage = `❌ Aduh, gagal:\n${error.message}`;
-        try {
-             await sock.sendMessage(sender, { text: errorMessage, edit: progressKey });
-        } catch (editError) {
-             await sock.sendMessage(sender, { text: errorMessage }, { quoted: msg });
-        }
+        await editMsg(`❌ Aduh, gagal:\n${error.message}`);
     } finally {
-        if (fs.existsSync(outputPath)) {
-            await fsPromises.unlink(outputPath).catch(e => console.error("Gagal hapus file temp:", e));
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+            await fsPromises.unlink(tempFilePath).catch(e => console.error("Gagal hapus file temp:", e));
         }
     }
 }
 
+// Export dan metadata
 export default async function execute(sock, msg, args) {
     const userUrl = args[0];
-    if (!userUrl) return sock.sendMessage(msg.key.remoteJid, { text: `Format salah.\nContoh: *${BOT_PREFIX}ytmp3 <url_youtube>*` }, { quoted: msg });
-
-    const ytRegex = /^(https?:\/\/)?(www\.)?(m\.)?(youtube\.com|youtu\.be)\/.+$/;
-    if (!ytRegex.test(userUrl)) {
-        return sock.sendMessage(msg.key.remoteJid, { text: "URL YouTube tidak valid." }, { quoted: msg });
+    if (!userUrl || !/^(https?:\/\/)?(www\.)?(m\.)?(youtube\.com|youtu\.be)\/.+$/.test(userUrl)) {
+        return sock.sendMessage(msg.key.remoteJid, { text: `Format salah.\nContoh: *${BOT_PREFIX}ytmp3 <url_youtube>*` }, { quoted: msg });
     }
-    await processAudioDownload(sock, msg, userUrl);
+    await processAudioDownload(sock, msg, youtubeUrl);
 }
-
 export const category = 'downloaders';
 export const description = 'Mengunduh audio dari link YouTube sebagai file MP3.';
 export const usage = `${BOT_PREFIX}ytmp3 <url_youtube>`;
