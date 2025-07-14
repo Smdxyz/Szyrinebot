@@ -1,4 +1,4 @@
-// main.js (Final Version - Correct Initialization Order)
+// main.js (Final Orchestrator Version)
 
 import 'dotenv/config';
 import process from 'process';
@@ -7,6 +7,7 @@ import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
 
+// Impor fungsi inti
 import { startBot, initiateShutdown } from './core/connection.js';
 import { handler } from './core/handler.js';
 import { handleIncomingCall } from './core/callHandler.js';
@@ -28,20 +29,18 @@ const handleShutdownSignal = (signal) => {
     initiateShutdown(activeSock, signal);
 };
 
+// ... fungsi checkDependencies tetap sama ...
 async function checkDependencies() {
     console.log("🔍 [CHECK] Memeriksa dependensi eksternal...");
     try {
-        const ffmpegInstalled = await commandExists('ffmpeg');
-        if (!ffmpegInstalled) {
-            console.error("❌ [FATAL] FFmpeg tidak ditemukan. Silakan install FFmpeg untuk fungsionalitas media.");
-            process.exit(1);
-        }
+        await commandExists('ffmpeg');
         console.log("✅ [OK] FFmpeg ditemukan.");
     } catch (e) {
-        console.error("❌ [FATAL] Gagal memeriksa FFmpeg:", e.message);
+        console.error("❌ [FATAL] FFmpeg tidak ditemukan. Silakan install FFmpeg.", e.message);
         process.exit(1);
     }
 }
+
 
 async function main() {
     try {
@@ -51,38 +50,39 @@ async function main() {
         process.on('SIGTERM', () => handleShutdownSignal('SIGTERM'));
 
         console.log("\n--- TAHAP 1: PERSIAPAN INTERNAL ---");
-        
         await checkDependencies();
-
-        console.log("[MAIN] Memuat semua command dari direktori modules...");
         await loadCommands();
-        console.log("[MAIN] Pemuatan command selesai.");
-
-        const handlers = {
-            message: handler,
-            call: handleIncomingCall,
-        };
-        console.log("[MAIN] Semua handler internal telah disiapkan.");
-        console.log("--- PERSIAPAN INTERNAL SELESAI ---\n");
+        console.log("[MAIN] Persiapan internal selesai.\n");
         
         console.log("--- TAHAP 2: AUTENTIKASI & KONEKSI ---");
-        
         const authFolderPath = path.resolve('session');
         const sessionExists = fs.existsSync(authFolderPath);
         let loginMode = null;
 
         if (!sessionExists) {
-            console.log("[AUTH] Folder sesi tidak ditemukan. Memulai setup awal.");
-            let choice = '';
-            while (choice !== '1' && choice !== '2') {
-                choice = await question("Pilih Mode Pairing:\n1. Otomatis (dari config.js)\n2. Manual (ketik nomor)\nPilihan (1/2): ");
-                if (choice === '1') loginMode = 'auto';
-                else if (choice === '2') loginMode = 'manual';
-                else console.log("Pilihan tidak valid.");
+            console.log("[AUTH] Folder sesi tidak ditemukan.");
+            let choice = await question("Pilih Mode Pairing: [1] Otomatis | [2] Manual: ");
+            if (choice === '1') loginMode = 'auto';
+            else if (choice === '2') loginMode = 'manual';
+            else {
+                console.log("Pilihan tidak valid, keluar.");
+                process.exit(1);
             }
         }
         
-        activeSock = await startBot(handlers, loginMode);
+        // --- PERUBAHAN UTAMA DI SINI ---
+        
+        // 1. Dapatkan objek 'sock' dari connection.js
+        console.log("[MAIN] Memulai koneksi bot...");
+        activeSock = await startBot(loginMode);
+
+        // 2. PASANG "KUPING" (EVENT HANDLER) LANGSUNG DI SINI
+        console.log("[MAIN] Memasang event handler untuk pesan dan panggilan...");
+        activeSock.ev.on('messages.upsert', (m) => handler(activeSock, m));
+        activeSock.ev.on('call', (calls) => handleIncomingCall(activeSock, calls));
+        
+        console.log("✅ [MAIN] Bot siap menerima perintah!");
+        console.log("--- BOT FULLY OPERATIONAL ---");
 
     } catch (err) {
         console.error("❌ [FATAL] Gagal total saat memulai bot:", err);
