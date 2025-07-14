@@ -71,5 +71,5 @@ export const ENERGY_RECHARGE_RATE_PER_HOUR = 10;
 
 // Ganti dengan URL raw dari repo GitHub Anda.
 // Format: https://raw.githubusercontent.com/<USERNAME>/<REPO_NAME>/<BRANCH>/
-export const COMMAND_UPDATE_BASE_URL = 'https://raw.githubusercontent.com/Smdzyz/Szyrinebot/main/';
+export const COMMAND_UPDATE_BASE_URL = 'https://raw.githubusercontent.com/Smdzyz/Szyrinebot/refs/heads/main/';
 // --- END OF FILE config.js ---
