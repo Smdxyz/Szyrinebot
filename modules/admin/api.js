@@ -1,10 +1,10 @@
-// modules/owner/api.js (New Power Tool)
+// modules/owner/api.js (FIXED for Baileys-Pro)
 import axios from 'axios';
 import path from 'path';
 import { URL } from 'url';
 import { BOT_OWNER, BOT_PREFIX } from '../../config.js';
 
-// --- Metadata ---
+// --- Metadata (tetap sama) ---
 export const category = 'owner';
 export const description = 'Mengirim permintaan ke API dan menampilkan responsnya. Khusus Owner.';
 export const usage = `${BOT_PREFIX}api <METHOD> <URL> [JSON_Body]`;
@@ -12,23 +12,14 @@ export const aliases = ['fetch', 'curl'];
 export const requiredTier = 'Admin';
 export const energyCost = 0;
 
-/**
- * Helper untuk mencoba mendapatkan nama file dari URL.
- * @param {string} url - URL untuk di-parse.
- * @returns {string} Nama file yang disarankan.
- */
 function getFileNameFromUrl(url) {
     try {
         const parsedUrl = new URL(url);
         const fileName = path.basename(parsedUrl.pathname);
-        // Jika path-nya hanya "/", berikan nama default
         if (fileName && fileName !== '/') {
             return fileName;
         }
-    } catch (e) {
-        // Abaikan jika URL tidak valid
-    }
-    // Fallback jika tidak ada nama file yang bisa dideteksi
+    } catch (e) { /* Abaikan */ }
     return `api-response-${Date.now()}.bin`;
 }
 
@@ -49,45 +40,46 @@ export default async function execute(sock, msg, args) {
         const usageText = `
 *API Power Tool*
 
-Perintah ini digunakan untuk berinteraksi dengan API endpoint manapun.
-
 *Cara Penggunaan:*
 \`\`\`${usage}\`\`\`
 
-*Methods yang Didukung:*
-- GET
-- POST
-- PUT
-- DELETE
-- PATCH
+*Methods:* GET, POST, PUT, DELETE, PATCH
 
 *Contoh GET:*
-\`\`\`${BOT_PREFIX}api GET https://api.github.com/users/openai\`\`\`
+\`\`\`${BOT_PREFIX}api GET https://szyrineapi.biz.id/api/test\`\`\`
 
-*Contoh POST dengan data:*
+*Contoh POST:*
 \`\`\`${BOT_PREFIX}api POST https://reqres.in/api/users {"name": "Szyrine", "job": "Bot Dev"}\`\`\`
         `.trim();
         return sock.sendMessage(msg.key.remoteJid, { text: usageText }, { quoted: msg });
     }
 
     const initialMsg = await sock.sendMessage(msg.key.remoteJid, { text: `⏳ Mengirim permintaan *${method}* ke *${url}*...` }, { quoted: msg });
-    const editMsg = (text) => sock.editMessage(msg.key.remoteJid, initialMsg.key, text);
+
+    // --- PERBAIKAN UTAMA DI SINI ---
+    // Baileys tidak punya sock.editMessage.
+    // Untuk mengedit, kita gunakan sock.sendMessage dengan menyertakan key dari pesan awal.
+    const editMsg = (newText) => {
+        return sock.sendMessage(msg.key.remoteJid, {
+            text: newText,
+            edit: initialMsg.key // <-- Kunci untuk memberitahu Baileys pesan mana yang harus diedit
+        });
+    };
+    // ------------------------------------
 
     try {
         const axiosConfig = {
             method,
             url,
-            responseType: 'arraybuffer', // Minta buffer mentah, kita akan proses nanti
-            headers: {
-                'User-Agent': 'Szyrine-WhatsApp-Bot/1.0'
-            }
+            responseType: 'arraybuffer',
+            headers: { 'User-Agent': 'Szyrine-WhatsApp-Bot/1.0' }
         };
 
         if ((method === 'POST' || method === 'PUT' || method === 'PATCH') && bodyData) {
             try {
                 axiosConfig.data = JSON.parse(bodyData);
             } catch (e) {
-                return editMsg(`❌ *JSON Tidak Valid*\n\nData body yang Anda berikan bukan format JSON yang benar.\n\n*Error:* ${e.message}`);
+                return editMsg(`❌ *JSON Tidak Valid*\n\n*Error:* ${e.message}`);
             }
         }
 
@@ -99,9 +91,10 @@ Perintah ini digunakan untuk berinteraksi dengan API endpoint manapun.
 
         const caption = `*✅ Respons Diterima*\n\n*Status:* ${response.status} ${response.statusText}\n*Content-Type:* ${contentType}\n*Size:* ${responseBuffer.length} bytes`;
         
-        await sock.editMessage(msg.key.remoteJid, initialMsg.key, caption);
+        // Edit pesan awal untuk menampilkan status sukses
+        await editMsg(caption);
 
-        // --- Logika Pemrosesan Respons ---
+        // --- Logika Pemrosesan Respons (tetap sama, sudah benar) ---
         if (contentType.includes('application/json')) {
             const jsonString = responseBuffer.toString('utf-8');
             const prettyJson = JSON.stringify(JSON.parse(jsonString), null, 2);
@@ -118,7 +111,6 @@ Perintah ini digunakan untuk berinteraksi dengan API endpoint manapun.
             await sock.sendMessage(msg.key.remoteJid, { text: textContent }, { quoted: msg });
 
         } else {
-            // Fallback untuk tipe lain (PDF, ZIP, audio, dll)
             await sock.sendMessage(msg.key.remoteJid, {
                 document: responseBuffer,
                 mimetype: contentType,
@@ -130,26 +122,13 @@ Perintah ini digunakan untuk berinteraksi dengan API endpoint manapun.
     } catch (error) {
         console.error('[API TOOL ERROR]', error);
         if (error.response) {
-            // Server merespons dengan status error (4xx, 5xx)
             const errorBody = Buffer.from(error.response.data).toString('utf-8');
-            const errorMessage = `
-*❌ API Gagal Merespons dengan Benar*
-
-*Status:* ${error.response.status} ${error.response.statusText}
-*URL:* ${url}
-
-*Response Body:*
-\`\`\`
-${errorBody.substring(0, 1000)}
-\`\`\`
-            `.trim();
+            const errorMessage = `*❌ API Gagal*\n\n*Status:* ${error.response.status} ${error.response.statusText}\n\n*Body:*\n\`\`\`${errorBody.substring(0, 1000)}\`\`\``;
             await editMsg(errorMessage);
         } else if (error.request) {
-            // Request dikirim tapi tidak ada respons (masalah jaringan)
-            await editMsg(`❌ *Tidak Ada Respons*\n\nPermintaan dikirim tapi tidak ada respons dari server. Cek koneksi internet bot atau URL API.`);
+            await editMsg(`❌ *Tidak Ada Respons*\n\nServer tidak merespons. Cek koneksi bot atau URL API.`);
         } else {
-            // Error lain (misal, salah konfigurasi)
-            await editMsg(`❌ *Error Saat Mengirim Permintaan*\n\nTerjadi kesalahan saat mencoba mengirim permintaan.\n\n*Pesan:* ${error.message}`);
+            await editMsg(`❌ *Error*\n\n*Pesan:* ${error.message}`);
         }
     }
 }
