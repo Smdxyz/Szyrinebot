@@ -1,8 +1,4 @@
-// main.js (Final Revised - Correct Initialization Order)
-
-/**
- * @file Titik masuk utama (entry point) untuk aplikasi bot.
- */
+// main.js (Final Version - Correct Initialization Order)
 
 import 'dotenv/config';
 import process from 'process';
@@ -11,7 +7,6 @@ import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
 
-// Impor fungsi inti
 import { startBot, initiateShutdown } from './core/connection.js';
 import { handler } from './core/handler.js';
 import { handleIncomingCall } from './core/callHandler.js';
@@ -22,7 +17,6 @@ const commandExists = require('command-exists');
 
 let activeSock = null;
 
-// Helper question dan handleShutdownSignal tetap sama
 const question = (text) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     return new Promise((resolve) => rl.question(text, (answer) => {
@@ -39,7 +33,7 @@ async function checkDependencies() {
     try {
         const ffmpegInstalled = await commandExists('ffmpeg');
         if (!ffmpegInstalled) {
-            console.error("❌ [FATAL] FFmpeg tidak ditemukan. Silakan install FFmpeg.");
+            console.error("❌ [FATAL] FFmpeg tidak ditemukan. Silakan install FFmpeg untuk fungsionalitas media.");
             process.exit(1);
         }
         console.log("✅ [OK] FFmpeg ditemukan.");
@@ -49,31 +43,21 @@ async function checkDependencies() {
     }
 }
 
-/**
- * Fungsi utama untuk mengorkestrasi startup bot.
- */
 async function main() {
     try {
         console.log("🚀 [MAIN] Memulai SzyrineBot...");
 
-        // Daftarkan listener sinyal shutdown di awal
         process.on('SIGINT', () => handleShutdownSignal('SIGINT'));
         process.on('SIGTERM', () => handleShutdownSignal('SIGTERM'));
 
-        // =================================================================
-        // LANGKAH 1: PERSIAPAN INTERNAL BOT (SELESAIKAN SEMUA SEBELUM KONEKSI)
-        // =================================================================
         console.log("\n--- TAHAP 1: PERSIAPAN INTERNAL ---");
         
-        // 1.1. Cek dependensi eksternal
         await checkDependencies();
 
-        // 1.2. Muat semua command. Bot kini "tahu" semua perintahnya.
         console.log("[MAIN] Memuat semua command dari direktori modules...");
         await loadCommands();
         console.log("[MAIN] Pemuatan command selesai.");
 
-        // 1.3. Siapkan semua handler yang akan digunakan.
         const handlers = {
             message: handler,
             call: handleIncomingCall,
@@ -81,12 +65,8 @@ async function main() {
         console.log("[MAIN] Semua handler internal telah disiapkan.");
         console.log("--- PERSIAPAN INTERNAL SELESAI ---\n");
         
-        // =================================================================
-        // LANGKAH 2: PROSES AUTENTIKASI DAN KONEKSI
-        // =================================================================
         console.log("--- TAHAP 2: AUTENTIKASI & KONEKSI ---");
         
-        // 2.1. Cek sesi login yang ada.
         const authFolderPath = path.resolve('session');
         const sessionExists = fs.existsSync(authFolderPath);
         let loginMode = null;
@@ -102,7 +82,6 @@ async function main() {
             }
         }
         
-        // 2.2. Mulai koneksi. Semua persiapan sudah selesai, kita tinggal menghubungkan bot.
         activeSock = await startBot(handlers, loginMode);
 
     } catch (err) {
@@ -111,5 +90,4 @@ async function main() {
     }
 }
 
-// Jalankan!
 main();
