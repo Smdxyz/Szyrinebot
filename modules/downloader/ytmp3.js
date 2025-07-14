@@ -1,4 +1,4 @@
-// /modules/downloaders/ytmp3.js (REVISI ULTIMATE: URL Stream > Buffer > FFmpeg)
+// /modules/downloaders/ytmp3.js (FIXED ReferenceError)
 
 import { BOT_PREFIX } from '../../config.js';
 import { formatBytes } from '../../core/handler.js';
@@ -19,7 +19,6 @@ function getYouTubeVideoId(url) {
     return match ? match[1] : null;
 }
 
-// Parser mandiri (tidak berubah)
 function parseYtmp3Result(providerKey, rawData) {
     if (!rawData || rawData.status !== 200 || !rawData.result) return null;
     const res = rawData.result;
@@ -45,20 +44,15 @@ const API_PROVIDERS = [
 async function processAudioDownload(sock, msg, youtubeUrl) {
     const sender = msg.key.remoteJid;
     const videoId = getYouTubeVideoId(youtubeUrl);
-    if (!videoId) {
-        return sock.sendMessage(sender, { text: `❌ Format link YouTube tidak valid.` }, { quoted: msg });
-    }
+    if (!videoId) return sock.sendMessage(sender, { text: `❌ Format link YouTube tidak valid.` }, { quoted: msg });
 
     const progressMessage = await sock.sendMessage(sender, { text: `⏳ Oke, sedang memproses permintaan...` }, { quoted: msg });
     const progressKey = progressMessage.key;
     const editMsg = (text) => sock.sendMessage(sender, { text: text, edit: progressKey });
     
-    let downloadInfo = null;
-    let chosenProvider = null;
-    let tempFilePath = '';
+    let downloadInfo = null, chosenProvider = null, tempFilePath = '';
 
     try {
-        // Step 1: Cari provider yang berfungsi
         for (const provider of API_PROVIDERS) {
             try {
                 await editMsg(`🎲 Mencoba server: *${provider.name}*...`);
@@ -78,13 +72,10 @@ async function processAudioDownload(sock, msg, youtubeUrl) {
         }
         if (!downloadInfo || !chosenProvider) throw new Error("Gagal mendapatkan link setelah mencoba semua server.");
 
-        // Step 2: Eksekusi berdasarkan tipe provider
         const cleanTitle = downloadInfo.title.replace(/[^\w\s.-]/gi, '') || 'youtube-audio';
 
         if (!chosenProvider.requiresFFmpeg) {
-            // --- JALUR CEPAT & EFISIEN (TANPA FFmpeg) ---
             try {
-                // PRIORITAS #1: KIRIM VIA URL (GOLDEN PATH)
                 await editMsg(`✅ Link didapat. Mencoba kirim audio via stream langsung...`);
                 await sock.sendMessage(sender, {
                     audio: { url: downloadInfo.url },
@@ -92,55 +83,32 @@ async function processAudioDownload(sock, msg, youtubeUrl) {
                     fileName: `${cleanTitle}.mp3`,
                 }, { quoted: msg });
                 await editMsg(`✅ Berhasil dikirim via stream!`);
-                return; // Selesai! Keluar dari fungsi.
-
+                return;
             } catch (streamError) {
-                // PRIORITAS #2: Jika stream gagal, unduh manual (BACKUP PLAN)
-                console.warn(`[YTMP3] Gagal kirim via URL, mencoba metode backup (download buffer)...`, streamError.message);
-                await editMsg(`⚠️ Stream gagal. Mencoba metode backup (download manual)...`);
-                
+                console.warn(`[YTMP3] Gagal kirim via URL, mencoba metode backup...`, streamError.message);
+                await editMsg(`⚠️ Stream gagal. Mencoba download manual...`);
                 const response = await axios.get(downloadInfo.url, { responseType: 'arraybuffer', timeout: 300000 });
                 const audioBuffer = response.data;
                 const fileSize = audioBuffer.length;
-
                 if (fileSize < 10240) throw new Error(`Hasil unduhan terlalu kecil atau rusak.`);
-                
-                await sock.sendMessage(sender, {
-                    audio: audioBuffer,
-                    mimetype: 'audio/mpeg',
-                    fileName: `${cleanTitle}.mp3`,
-                }, { quoted: msg });
-
-                const infoText = `✅ *Proses Selesai!* (Backup)\n\n*Judul:* ${downloadInfo.title}\n*Ukuran File:* ${formatBytes(fileSize)}`;
-                await editMsg(infoText);
+                await sock.sendMessage(sender, { audio: audioBuffer, mimetype: 'audio/mpeg', fileName: `${cleanTitle}.mp3` }, { quoted: msg });
+                await editMsg(`✅ *Proses Selesai!* (Backup)\n\n*Judul:* ${downloadInfo.title}\n*Ukuran File:* ${formatBytes(fileSize)}`);
             }
         } else {
-            // --- JALUR LAMBAT (LAST RESORT DENGAN FFmpeg) ---
             await editMsg(`📥 Mengunduh & butuh konversi via FFmpeg...`);
             tempFilePath = path.join(tempDir, `${Date.now()}_${cleanTitle}.mp3`);
             const response = await axios({ method: 'GET', url: downloadInfo.url, responseType: 'stream', timeout: 300000 });
-
             await new Promise((resolve, reject) => {
-                fluent(response.data)
-                    .audioCodec('libmp3lame').audioBitrate('128k').format('mp3')
+                fluent(response.data).audioCodec('libmp3lame').audioBitrate('128k').format('mp3')
                     .on('error', (err) => reject(new Error(`FFmpeg gagal: ${err.message}`)))
                     .on('end', resolve)
                     .save(tempFilePath);
             });
-            
             const stats = await fsPromises.stat(tempFilePath);
             if (stats.size < 10240) throw new Error(`Hasil konversi FFmpeg terlalu kecil.`);
-            
-            await sock.sendMessage(sender, {
-                audio: await fsPromises.readFile(tempFilePath),
-                mimetype: 'audio/mpeg',
-                fileName: `${cleanTitle}.mp3`,
-            }, { quoted: msg });
-
-            const infoText = `✅ *Proses Selesai!* (FFmpeg)\n\n*Judul:* ${downloadInfo.title}\n*Ukuran File:* ${formatBytes(stats.size)}`;
-            await editMsg(infoText);
+            await sock.sendMessage(sender, { audio: await fsPromises.readFile(tempFilePath), mimetype: 'audio/mpeg', fileName: `${cleanTitle}.mp3` }, { quoted: msg });
+            await editMsg(`✅ *Proses Selesai!* (FFmpeg)\n\n*Judul:* ${downloadInfo.title}\n*Ukuran File:* ${formatBytes(stats.size)}`);
         }
-
     } catch (error) {
         console.error(`[YTMP3] Proses gagal total:`, error);
         await editMsg(`❌ Aduh, gagal:\n${error.message}`);
@@ -157,7 +125,8 @@ export default async function execute(sock, msg, args) {
     if (!userUrl || !/^(https?:\/\/)?(www\.)?(m\.)?(youtube\.com|youtu\.be)\/.+$/.test(userUrl)) {
         return sock.sendMessage(msg.key.remoteJid, { text: `Format salah.\nContoh: *${BOT_PREFIX}ytmp3 <url_youtube>*` }, { quoted: msg });
     }
-    await processAudioDownload(sock, msg, youtubeUrl);
+    // --- PERBAIKAN DI SINI ---
+    await processAudioDownload(sock, msg, userUrl);
 }
 export const category = 'downloaders';
 export const description = 'Mengunduh audio dari link YouTube sebagai file MP3.';
