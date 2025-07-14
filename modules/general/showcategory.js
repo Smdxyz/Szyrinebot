@@ -1,5 +1,5 @@
 // modules/internal/showcategory.js (Versi dengan Interactive Message & Gaya Gaul)
-import { generateWAMessageFromContent, proto } from '@itsukichan/baileys';
+import { generateWAMessageFromContent, proto } from '@fizzxydev/baileys-pro';
 import { getCategorizedCommands } from '../../core/commandRegistry.js';
 import { BOT_PREFIX, BOT_NAME, WATERMARK } from '../../config.js';
 

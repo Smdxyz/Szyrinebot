@@ -1,5 +1,5 @@
 // modules/general/menu.js (REVISI FINAL - FIX TypeError)
-import { generateWAMessageFromContent, proto } from '@itsukichan/baileys';
+import { generateWAMessageFromContent, proto } from '@fizzxydev/baileys-pro';
 import { getCategorizedCommands } from '../../core/commandRegistry.js';
 import { BOT_PREFIX, BOT_NAME, BOT_OWNER, WATERMARK, TIERS, MAX_ENERGY_BY_TIER } from '../../config.js';
 import { BOT_START_TIME } from '../../core/bot.js';
