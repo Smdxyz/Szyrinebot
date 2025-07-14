@@ -1,4 +1,4 @@
-// main.js (Final Orchestrator Version)
+// main.js (Final Orchestrator Version with Robust Signal Handling)
 
 import 'dotenv/config';
 import process from 'process';
@@ -18,18 +18,35 @@ const commandExists = require('command-exists');
 
 let activeSock = null;
 
-const question = (text) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    return new Promise((resolve) => rl.question(text, (answer) => {
-        rl.close();
-        resolve(answer.trim().toLowerCase());
-    }));
-};
-const handleShutdownSignal = (signal) => {
+// --- PERBAIKAN UNTUK CTRL+C ---
+// 1. Buat satu instance readline yang bisa kita kontrol.
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+});
+
+// 2. Buat satu fungsi shutdown yang terpusat.
+const handleShutdown = (signal) => {
+    // Pastikan readline ditutup agar proses tidak menggantung.
+    rl.close(); 
+    console.log(`\n[MAIN] Sinyal ${signal} diterima. Memulai proses shutdown...`);
     initiateShutdown(activeSock, signal);
 };
 
-// ... fungsi checkDependencies tetap sama ...
+// 3. Pasang listener sinyal di awal untuk menangkap CTRL+C (SIGINT) dan sinyal lainnya.
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+
+// 4. Modifikasi fungsi question untuk menggunakan instance 'rl' yang sudah ada.
+const question = (text) => {
+    return new Promise((resolve) => {
+        // Jangan membuat atau menutup rl di sini.
+        rl.question(text, (answer) => {
+            resolve(answer.trim().toLowerCase());
+        });
+    });
+};
+
 async function checkDependencies() {
     console.log("🔍 [CHECK] Memeriksa dependensi eksternal...");
     try {
@@ -41,13 +58,11 @@ async function checkDependencies() {
     }
 }
 
-
 async function main() {
     try {
         console.log("🚀 [MAIN] Memulai SzyrineBot...");
 
-        process.on('SIGINT', () => handleShutdownSignal('SIGINT'));
-        process.on('SIGTERM', () => handleShutdownSignal('SIGTERM'));
+        // Listener sinyal sudah dipasang di atas.
 
         console.log("\n--- TAHAP 1: PERSIAPAN INTERNAL ---");
         await checkDependencies();
@@ -70,13 +85,12 @@ async function main() {
             }
         }
         
-        // --- PERUBAHAN UTAMA DI SINI ---
-        
-        // 1. Dapatkan objek 'sock' dari connection.js
+        // 5. Setelah selesai bertanya, tutup readline agar tidak memblokir proses.
+        rl.close();
+
         console.log("[MAIN] Memulai koneksi bot...");
         activeSock = await startBot(loginMode);
 
-        // 2. PASANG "KUPING" (EVENT HANDLER) LANGSUNG DI SINI
         console.log("[MAIN] Memasang event handler untuk pesan dan panggilan...");
         activeSock.ev.on('messages.upsert', (m) => handler(activeSock, m));
         activeSock.ev.on('call', (calls) => handleIncomingCall(activeSock, calls));
@@ -86,6 +100,8 @@ async function main() {
 
     } catch (err) {
         console.error("❌ [FATAL] Gagal total saat memulai bot:", err);
+        // Pastikan readline ditutup jika terjadi error.
+        rl.close();
         process.exit(1);
     }
 }
