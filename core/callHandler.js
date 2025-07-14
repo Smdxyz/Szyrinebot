@@ -1,10 +1,6 @@
-//--- START OF FILE callHandler.js ---
-
-// core/callHandler.js
-import { ANTI_CALL, BOT_NAME } from '../config.js';
-// Import fungsi untuk mendapatkan internalId dari JID
+// core/callHandler.js (Final Version)
+import { ANTI_CALL } from '../config.js';
 import { getOrCreateUserBasicData } from './firebase.js';
-// Import fungsi baru untuk mencatat panggilan dari data lokal
 import { incrementRejectedCallsLocal } from './localDataHandler.js';
 
 export async function handleIncomingCall(sock, callEvents) {
@@ -13,29 +9,23 @@ export async function handleIncomingCall(sock, callEvents) {
     }
 
     for (const call of callEvents) {
-        // Hanya proses panggilan masuk baru (status 'offer')
         if (call.id && call.from && call.status === 'offer') {
             const callId = call.id;
-            const callFrom = call.from; // JID penelepon
+            const callFrom = call.from;
 
             console.log(`📞 Menerima panggilan masuk dari ${callFrom} [ID: ${callId}]`);
 
             try {
-                // Tolak panggilan
                 await sock.rejectCall(callId, callFrom);
                 console.log(`🚫 Panggilan dari ${callFrom} [ID: ${callId}] berhasil ditolak.`);
 
-                // 1. Dapatkan internalId dari JID penelepon
                 const { internalId } = await getOrCreateUserBasicData(callFrom, '');
-                if (!internalId) {
+                if (internalId) {
+                    await incrementRejectedCallsLocal(internalId);
+                } else {
                     console.warn(`[ANTI-CALL] Tidak bisa mendapatkan internalId untuk ${callFrom}, pencatatan panggilan dilewati.`);
-                    continue; // Lanjut ke panggilan berikutnya jika ada
                 }
                 
-                // 2. Catat panggilan yang ditolak ke data LOKAL
-                await incrementRejectedCallsLocal(internalId);
-
-                // Kirim pesan peringatan ke penelepon (dibuat lebih keren)
                 await sock.sendMessage(callFrom, {
                     text: `Aduh, maaf banget! 📞\n\nAku cuma bot chat dan gabisa ngangkat telepon. Panggilan kamu udah aku tolak otomatis ya. Kalo ada perlu, langsung ketik aja di chat! 😉`
                 });
@@ -46,4 +36,3 @@ export async function handleIncomingCall(sock, callEvents) {
         }
     }
 }
-//--- END OF FILE callHandler.js ---

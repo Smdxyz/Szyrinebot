@@ -1,4 +1,4 @@
-// core/commandRegistry.js
+// core/commandRegistry.js (Final Version - Handles New Metadata Structure)
 import { readdirSync, statSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,11 +17,6 @@ export async function loadCommands() {
     const tempCommandMap = new Map();     
 
     try {
-        if (!statSync(modulesDir).isDirectory()) {
-             console.warn(`[CMD REGISTRY] Direktori modules tidak ditemukan di '${modulesDir}'. Tidak ada command yang dimuat.`);
-             return;
-        }
-
         const categories = readdirSync(modulesDir, { withFileTypes: true })
             .filter(dirent => dirent.isDirectory())
             .map(dirent => dirent.name);
@@ -30,17 +25,12 @@ export async function loadCommands() {
 
         for (const categoryName of categories) {
             const categoryPath = path.join(modulesDir, categoryName);
-            let commandFilesInCategory = [];
+            let commandFilesInCategory;
             try {
-                commandFilesInCategory = readdirSync(categoryPath)
-                    .filter(file => file.endsWith('.js') && statSync(path.join(categoryPath, file)).isFile());
+                commandFilesInCategory = readdirSync(categoryPath).filter(file => file.endsWith('.js'));
             } catch (readDirError) {
                 console.error(`[CMD REGISTRY] ❌ Gagal membaca direktori untuk kategori '${categoryName}':`, readDirError);
                 continue; 
-            }
-
-            if (!tempCommandDataByCategory[categoryName]) {
-                tempCommandDataByCategory[categoryName] = [];
             }
 
             for (const file of commandFilesInCategory) {
@@ -56,28 +46,36 @@ export async function loadCommands() {
                             category: commandModule.category || categoryName, 
                             description: commandModule.description || 'Tidak ada deskripsi.',
                             usage: commandModule.usage || `${BOT_PREFIX}${commandName}`,
-                            // --- BARIS BARU: Ambil metadata tier & energy ---
+                            aliases: commandModule.aliases || [],
                             requiredTier: commandModule.requiredTier || null,
                             energyCost: commandModule.energyCost || 0,
-                            // ------------------------------------------------
                             filePath: filePath,
                             execute: commandModule.default,
                         };
 
                         if (tempCommandMap.has(commandName)) {
-                            console.warn(`[CMD REGISTRY] ⚠️ Peringatan: Command '${commandName}' dari '${filePath}' menimpa command dengan nama sama dari '${tempCommandMap.get(commandName).filePath}'.`);
+                            console.warn(`[CMD REGISTRY] ⚠️ Peringatan: Command '${commandName}' dari '${filePath}' menimpa command dengan nama sama.`);
                         }
                         tempCommandMap.set(commandName, cmdData);
                         
+                        // Handle aliases
+                        for (const alias of cmdData.aliases) {
+                             if (tempCommandMap.has(alias)) {
+                                console.warn(`[CMD REGISTRY] ⚠️ Peringatan: Alias '${alias}' dari command '${commandName}' menimpa command/alias yang sudah ada.`);
+                             }
+                             tempCommandMap.set(alias, cmdData);
+                        }
+
                         if (!tempCommandDataByCategory[cmdData.category]) {
                             tempCommandDataByCategory[cmdData.category] = [];
                         }
                         tempCommandDataByCategory[cmdData.category].push(cmdData);
+
                     } else {
                         console.warn(`[CMD REGISTRY] ⚠️ File command '${filePath}' TIDAK memiliki 'export default function'. Command tidak dimuat.`);
                     }
                 } catch (error) {
-                    console.error(`[CMD REGISTRY] ❌ Gagal memuat atau ada error sintaks di command '${commandName}' dari '${filePath}':`, error.message, error.stack);
+                    console.error(`[CMD REGISTRY] ❌ Gagal memuat atau ada error sintaks di command '${filePath}':`, error);
                 }
             }
         }
@@ -90,11 +88,9 @@ export async function loadCommands() {
         .map(([category, commands]) => ({ category, commands }))
         .filter(cat => cat.commands.length > 0); 
 
-    console.log(`[CMD REGISTRY] ✅ Pemuatan command selesai. Total ${commandMap.size} command dimuat.`);
+    console.log(`[CMD REGISTRY] ✅ Pemuatan command selesai. Total ${commandMap.size} command (termasuk alias) dimuat.`);
     if (commandMap.size > 0) {
-        console.log(`[CMD REGISTRY] Daftar command yang aktif: ${Array.from(commandMap.keys()).join(', ')}`);
-    } else {
-        console.log(`[CMD REGISTRY] Tidak ada command yang aktif.`);
+        console.log(`[CMD REGISTRY] Daftar command yang aktif: ${getCommandNames().join(', ')}`);
     }
 }
 
@@ -107,5 +103,12 @@ export function getCommand(commandName) {
 }
 
 export function getCommandNames() {
-    return Array.from(commandMap.keys());
+    // Return only unique command names, not aliases, for display purposes.
+    const uniqueCommands = new Map();
+    for (const [key, value] of commandMap.entries()) {
+        if (!uniqueCommands.has(value.name)) {
+            uniqueCommands.set(value.name, value);
+        }
+    }
+    return Array.from(uniqueCommands.keys());
 }
