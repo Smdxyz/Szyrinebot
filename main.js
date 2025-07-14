@@ -6,30 +6,33 @@
  * memuat command, dan memulai koneksi.
  */
 
+// Impor modul Node.js dan dari package
 import 'dotenv/config';
 import process from 'process';
 import { createRequire } from 'module';
 import readline from 'readline';
+import fs from 'fs';
+import path from 'path';
 
-// Impor fungsi inti dari modul terpisah
+// Impor fungsi inti dari modul-modul di dalam proyek
 import { startBot, initiateShutdown } from './core/connection.js';
 import { handler } from './core/handler.js';
 import { handleIncomingCall } from './core/callHandler.js';
 import { loadCommands } from './core/commandRegistry.js';
 
-// Setup untuk command-exists di lingkungan ESM
+// Setup untuk 'command-exists' di lingkungan ESM
 const require = createRequire(import.meta.url);
 const commandExists = require('command-exists');
 
-// Variabel global untuk cache jika diperlukan di modul lain
+// Inisialisasi cache global jika diperlukan oleh modul lain
 global.ytdlOptionsCache = new Map();
 console.log("[MAIN] Global cache ytdlOptionsCache diinisialisasi.");
 
-// Variabel untuk menyimpan instance socket yang aktif untuk proses shutdown
+// Variabel untuk menyimpan instance socket aktif, digunakan untuk shutdown yang aman
 let activeSock = null;
 
 /**
- * Helper untuk menanyakan sesuatu di terminal dan mendapatkan jawaban.
+ * Helper untuk menanyakan sesuatu di terminal.
  * @param {string} text - Pertanyaan yang akan ditampilkan.
  * @returns {Promise<string>} - Jawaban dari pengguna (dibersihkan dan lowercase).
  */
@@ -42,7 +45,8 @@ const question = (text) => {
 };
 
 /**
- * Memeriksa dependensi eksternal yang krusial (seperti FFmpeg) sebelum bot berjalan.
+ * Memeriksa dependensi eksternal yang krusial (seperti FFmpeg).
+ * Bot akan keluar jika dependensi tidak ditemukan.
  */
 async function checkDependencies() {
     console.log("🔍 [CHECK] Memeriksa dependensi eksternal...");
@@ -81,27 +85,37 @@ async function main() {
         // 1. Jalankan pemeriksaan dependensi
         await checkDependencies();
 
-        // 2. Muat semua command dari modul
+        // 2. Muat semua command dari modul. Bot jadi "tahu" semua perintahnya.
         console.log("[MAIN] Memuat semua command...");
         await loadCommands();
 
-        // 3. Tanyakan mode login kepada pengguna
-        console.log("\n=================================");
-        console.log("  Pilih Mode Login Pairing");
-        console.log("=================================");
-        console.log("1. Otomatis (menggunakan nomor dari config.js)");
-        console.log("2. Manual (ketik nomor telepon secara manual)");
-        
-        let loginMode = '';
-        while (loginMode !== 'auto' && loginMode !== 'manual') {
-            const choice = await question("\nMasukkan pilihan (1 atau 2): ");
-            if (choice === '1') {
-                loginMode = 'auto';
-            } else if (choice === '2') {
-                loginMode = 'manual';
-            } else {
-                console.log("Pilihan tidak valid. Harap masukkan 1 atau 2.");
+        // 3. Cek apakah sesi login sudah ada.
+        const authFolderPath = path.resolve('session');
+        const sessionExists = fs.existsSync(authFolderPath);
+        let loginMode = null; // Default null, artinya sesi ada dan tidak perlu bertanya
+
+        // Jika sesi TIDAK ada, tanyakan pengguna cara login.
+        if (!sessionExists) {
+            console.log("\n[AUTH] Folder sesi tidak ditemukan. Memulai setup awal.");
+            console.log("=================================");
+            console.log("  Pilih Mode Login Pairing");
+            console.log("=================================");
+            console.log("1. Otomatis (menggunakan nomor dari config.js)");
+            console.log("2. Manual (ketik nomor telepon secara manual)");
+            
+            let choice = '';
+            while (choice !== '1' && choice !== '2') {
+                choice = await question("\nMasukkan pilihan (1 atau 2): ");
+                if (choice === '1') {
+                    loginMode = 'auto';
+                } else if (choice === '2') {
+                    loginMode = 'manual';
+                } else {
+                    console.log("Pilihan tidak valid. Harap masukkan 1 atau 2.");
+                }
             }
+        } else {
+            console.log("[AUTH] Folder sesi ditemukan, akan login menggunakan sesi yang ada.");
         }
         
         // 4. Siapkan objek handlers untuk diserahkan ke connection.js
@@ -111,7 +125,7 @@ async function main() {
         };
 
         // 5. Mulai koneksi Baileys dan simpan instance socket
-        console.log(`[MAIN] Memulai koneksi Baileys dalam mode '${loginMode}'...`);
+        console.log("[MAIN] Memulai koneksi Baileys...");
         activeSock = await startBot(handlers, loginMode);
 
     } catch (err) {
