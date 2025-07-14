@@ -1,4 +1,5 @@
-// core/connection.js (Final Simplified Version)
+// core/connection.js (Logika Auth Diperbarui)
+
 import { makeWASocket, DisconnectReason, useMultiFileAuthState, Browsers, makeCacheableSignalKeyStore } from '@fizzxydev/baileys-pro';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
@@ -29,31 +30,34 @@ const question = (text) => {
     }));
 };
 
-// --- PERUBAHAN UTAMA ---
-// Fungsi ini sekarang tidak lagi menerima 'handlers'
 export async function startBot(loginMode) {
     const authFolderPath = path.resolve('session');
     const { state, saveCreds } = await useMultiFileAuthState(authFolderPath);
 
+    // --- PERUBAHAN UTAMA: KONFIGURASI SOCKET DENGAN LOGIKA BARU ---
     const sock = makeWASocket({
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false,
-        browser: Browsers.ubuntu('Chrome'),
+        printQRInTerminal: false, // QR tidak akan digunakan karena kita memakai pairing code
+        
+        // Menggunakan browser standar dari library untuk stabilitas
+        browser: Browsers.ubuntu('Chrome'), 
+        
+        // Menggunakan struktur auth yang lebih robust
         auth: {
             creds: state.creds,
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })),
         },
     });
 
-    // Pairing logic tetap sama
+    // Logika pairing hanya dijalankan jika mode login ditentukan (artinya folder sesi tidak ada)
     if (loginMode) {
         let phoneNumber;
         if (loginMode === 'manual') {
             const inputNumber = await question("Masukkan nomor WhatsApp Anda (cth: 62812...): ");
             phoneNumber = inputNumber.replace(/[^0-9]/g, '');
-        } else {
+        } else { // mode 'auto'
             if (!BOT_PHONE_NUMBER) {
-                console.error("❌ [FATAL] BOT_PHONE_NUMBER belum diatur di config.js.");
+                console.error("❌ [FATAL] BOT_PHONE_NUMBER belum diatur di config.js untuk mode otomatis.");
                 process.exit(1);
             }
             phoneNumber = BOT_PHONE_NUMBER.replace(/[^0-9]/g, '');
@@ -65,11 +69,15 @@ export async function startBot(loginMode) {
         }
 
         try {
+            // Menambahkan jeda singkat untuk menghindari rate-limit saat meminta kode
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
             console.log(`\n[PAIRING] Meminta Kode Pairing untuk +${phoneNumber} ...`);
             const code = await sock.requestPairingCode(phoneNumber);
             console.log(`\n=================================================`);
             console.log(`  📟 KODE PAIRING ANDA: ${code}`);
             console.log(`=================================================`);
+            console.log('Silakan masukkan kode ini di perangkat WhatsApp Anda (Link a device -> Link with phone number).');
         } catch (error) {
             console.error("❌ [FATAL] Gagal meminta pairing code:", error);
             process.exit(1);
@@ -78,11 +86,10 @@ export async function startBot(loginMode) {
         console.log("[AUTH] Sesi ditemukan. Mencoba terhubung...");
     }
 
-    // --- PERUBAHAN KRUSIAL ---
-    // Handler pesan & panggilan sudah DIHAPUS dari sini.
-    // Kita hanya mendaftarkan handler yang esensial untuk koneksi itu sendiri.
+    // Handler untuk menyimpan kredensial setiap kali diperbarui
     sock.ev.on('creds.update', saveCreds);
 
+    // Handler untuk memantau status koneksi (tetap menggunakan versi yang lebih detail)
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === 'open') {
@@ -97,9 +104,10 @@ export async function startBot(loginMode) {
             }
             console.log(`[CONNECTION] Koneksi ditutup! Status: ${statusCode}, Alasan: "${lastDisconnect.error?.message || 'Tidak Diketahui'}".`);
             if (statusCode !== DisconnectReason.loggedOut) {
-                console.log("[RECONNECT] Mencoba menyambung kembali...");
+                console.log("[RECONNECT] Mencoba menyambung kembali setelah 5 detik...");
+                setTimeout(() => startBot(null), 5000); // Coba konek lagi, tanpa loginMode
             } else {
-                console.error("❌ [FATAL] Logged Out. Hapus folder 'session' dan restart.");
+                console.error("❌ [FATAL] Logged Out. Hapus folder 'session' dan restart untuk pairing ulang.");
                 process.exit(1);
             }
         } else if (connection === 'connecting') {
