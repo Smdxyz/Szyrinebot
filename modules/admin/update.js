@@ -1,11 +1,11 @@
-// modules/owner/update.js (Final Version)
+// modules/owner/update.js (Final Hot-Reload Version)
 import axios from 'axios';
 import { promises as fs } from 'fs';
 import path, { dirname } from 'path';
 import { fileURLToPath } from 'url';
-import process from 'process';
 import 'dotenv/config';
 
+import { reloadCommand } from '../../core/commandRegistry.js'; 
 import { BOT_OWNER, COMMAND_UPDATE_BASE_URL, BOT_PREFIX } from '../../config.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,7 +13,7 @@ const __dirname = dirname(__filename);
 
 // --- Metadata ---
 export const category = 'owner';
-export const description = 'Memperbarui file command dari GitHub & me-restart bot.';
+export const description = 'Memperbarui file command dari GitHub (no-restart).';
 export const usage = `${BOT_PREFIX}update <category/command_name>`;
 export const aliases = ['up', 'updatecmd'];
 export const requiredTier = 'Admin';
@@ -28,7 +28,7 @@ export default async function execute(sock, msg, args) {
     }
 
     if (!COMMAND_UPDATE_BASE_URL) {
-        return sock.sendMessage(msg.key.remoteJid, { text: '❌ Konfigurasi `COMMAND_UPDATE_BASE_URL` belum diatur di `config.js`.' }, { quoted: msg });
+        return sock.sendMessage(msg.key.remoteJid, { text: '❌ Konfigurasi `COMMAND_UPDATE_BASE_URL` belum diatur.' }, { quoted: msg });
     }
 
     if (args.length === 0) {
@@ -43,7 +43,6 @@ export default async function execute(sock, msg, args) {
     const initialMsg = await sock.sendMessage(msg.key.remoteJid, { text: `⏳ Mencoba memperbarui \`${commandPath}\`...` }, { quoted: msg });
 
     try {
-        console.log(`[UPDATE] Mengunduh dari: ${remoteUrl}`);
         const { data: newCode } = await axios.get(remoteUrl, { responseType: 'text' });
 
         if (!newCode || typeof newCode !== 'string' || newCode.trim().length === 0) {
@@ -52,14 +51,16 @@ export default async function execute(sock, msg, args) {
         
         await fs.mkdir(path.dirname(localPath), { recursive: true });
         await fs.writeFile(localPath, newCode, 'utf8');
+        await sock.editMessage(msg.key.remoteJid, initialMsg.key, `✅ Berhasil menyimpan file \`${commandPath}\`.\n\n🔄 Melakukan Hot-Reload...`);
 
-        await sock.editMessage(msg.key.remoteJid, initialMsg.key, `✅ Berhasil memperbarui \`${commandPath}\`.\n\n🔄 Bot akan me-restart dalam 3 detik...`);
+        const reloadResult = await reloadCommand(localPath);
 
-        setTimeout(() => {
-            console.log("[UPDATE] Melakukan restart proses bot...");
-            process.exit(1);
-        }, 3000);
-
+        if (reloadResult.success) {
+            await sock.editMessage(msg.key.remoteJid, initialMsg.key, `✅ Command \`${commandPath}\` berhasil diperbarui dan aktif tanpa restart!`);
+        } else {
+            await sock.editMessage(msg.key.remoteJid, initialMsg.key, `❌ File diunduh, tapi gagal hot-reload:\n\n\`${reloadResult.message}\``);
+        }
+        
     } catch (error) {
         console.error('[UPDATE ERROR]', error);
         let errorMessage = `❌ Gagal total: ${error.message}`;
