@@ -8,36 +8,41 @@ export const category = 'ai';
 export const description = 'Membuat gambar dari deskripsi teks menggunakan AI (DeepImg).';
 export const usage = `Ketik ${BOT_PREFIX}deepimg <deskripsi gambar>\n\nContoh: ${BOT_PREFIX}deepimg kucing astronot di bulan`;
 
-// --- PRESET GAYA & UKURAN ---
+// --- PRESET GAYA & UKURAN (SUDAH DISESUAIKAN DENGAN API) ---
 const presets = {
     anime_square: {
         style: 'anime', size: '1:1',
         title: 'Anime (Persegi 1:1)', description: 'Gambar gaya anime, cocok untuk foto profil.'
     },
-    photo_square: {
-        style: 'photorealistic', size: '1:1',
-        title: 'Realistis (Persegi 1:1)', description: 'Foto realistis, cocok untuk profil atau post.'
+    // 'photorealistic' diganti dengan 'portrait' yang didukung API
+    portrait_square: {
+        style: 'portrait', size: '1:1',
+        title: 'Realistis (Persegi 1:1)', description: 'Foto potret realistis, bagus untuk profil.'
     },
     anime_tall: {
         style: 'anime', size: '2:3',
         title: 'Anime (Potrait 2:3)', description: 'Gambar anime tinggi, cocok untuk wallpaper HP.'
     },
-    photo_tall: {
-        style: 'photorealistic', size: '2:3',
-        title: 'Realistis (Potrait 2:3)', description: 'Foto realistis tinggi, untuk story atau wallpaper.'
+    // 'photorealistic' diganti dengan 'portrait'
+    portrait_tall: {
+        style: 'portrait', size: '2:3',
+        title: 'Realistis (Potrait 2:3)', description: 'Foto potret tinggi, untuk story atau wallpaper.'
     },
-    anime_wide: {
-        style: 'anime', size: '3:2',
-        title: 'Anime (Landscape 3:2)', description: 'Gambar anime lebar, untuk wallpaper desktop.'
+    // Menambahkan style 'cyberpunk' dari dokumentasi
+    cyberpunk_wide: {
+        style: 'cyberpunk', size: '3:2',
+        title: 'Cyberpunk (Landscape 3:2)', description: 'Gambar gaya cyberpunk lebar, untuk wallpaper desktop.'
     },
-    photo_wide: {
-        style: 'photorealistic', size: '3:2',
-        title: 'Realistis (Landscape 3:2)', description: 'Foto realistis lebar, untuk thumbnail atau wallpaper.'
+    // Mengganti 'photorealistic' dengan 'portrait'
+    portrait_wide: {
+        style: 'portrait', size: '3:2',
+        title: 'Realistis (Landscape 3:2)', description: 'Foto potret lebar, untuk thumbnail atau wallpaper.'
     }
 };
 
 /**
  * (LOKAL) Fungsi untuk memanggil API DeepImg.
+ * --- SUDAH DIPERBAIKI ---
  */
 async function createWithDeepImg(prompt, style, size) {
     console.log(`[DEEPIMG] Calling API. Style: ${style}, Size: ${size}, Prompt: ${prompt.substring(0, 50)}...`);
@@ -45,13 +50,16 @@ async function createWithDeepImg(prompt, style, size) {
     const encodedPrompt = encodeURIComponent(prompt);
     const apiUrl = `https://szyrineapi.biz.id/api/image/create/deepimg?prompt=${encodedPrompt}&style=${style}&size=${size}`;
     
-    const result = await safeApiGet(apiUrl);
+    const response = await safeApiGet(apiUrl);
 
-    if (result?.success !== true || !result?.url) {
+    // [FIX] Mengakses object 'result' terlebih dahulu sesuai struktur API
+    if (response?.result?.success !== true || !response?.result?.url) {
+        console.error('[DEEPIMG] Invalid API Response:', response);
         throw new Error('Gagal membuat gambar, respons API tidak valid atau tidak berisi URL hasil.');
     }
     
-    return result.url;
+    // [FIX] Mengembalikan URL dari dalam object 'result'
+    return response.result.url;
 }
 
 /**
