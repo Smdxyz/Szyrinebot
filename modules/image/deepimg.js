@@ -1,4 +1,4 @@
-// /modules/ai/deepimg.js (AI Image Generator with Preset System)
+// /modules/image/deepimg.js (AI Image Generator with Preset System)
 
 import { BOT_PREFIX } from '../../config.js';
 import { safeApiGet } from '../../libs/apiHelper.js';
@@ -35,29 +35,37 @@ const presets = {
 };
 
 /**
- * (LOKAL) Fungsi untuk memanggil API DeepImg.
- * --- SUDAH DIPERBAIKI (LEBIH FLEKSIBEL) ---
+ * Fungsi untuk memanggil API DeepImg.
+ * Versi tahan banting terhadap variasi format respons.
  */
 async function createWithDeepImg(prompt, style, size) {
     console.log(`[DEEPIMG] Calling API. Style: ${style}, Size: ${size}, Prompt: ${prompt.substring(0, 50)}...`);
-    
+
     const encodedPrompt = encodeURIComponent(prompt);
     const apiUrl = `https://szyrineapi.biz.id/api/image/create/deepimg?prompt=${encodedPrompt}&style=${style}&size=${size}`;
-    
+
     const response = await safeApiGet(apiUrl);
 
-    // [FIX v2] Cek kedua kemungkinan format respons API
-    // 1. Cek format nested: response.result.url
-    // 2. Jika tidak ada, cek format flat: response.url
-    const resultUrl = response?.result?.url || response?.url;
-    const isSuccess = response?.result?.success === true || response?.success === true;
+    // Deteksi format respons fleksibel
+    let resultUrl = null;
+    let isSuccess = false;
 
-    if (!isSuccess || !resultUrl) {
-        console.error('[DEEPIMG] Invalid API Response:', response);
+    if (response?.result?.url) {
+        resultUrl = response.result.url;
+        isSuccess = response.result.success === true;
+    } else if (response?.url) {
+        resultUrl = response.url;
+        isSuccess = response.success === true;
+    }
+
+    const fixedUrl = decodeURIComponent(resultUrl || '').trim();
+
+    if (!isSuccess || !fixedUrl.startsWith('http')) {
+        console.error('[DEEPIMG] Invalid API Response:', JSON.stringify(response, null, 2));
         throw new Error('Gagal membuat gambar, respons API tidak valid atau tidak berisi URL hasil.');
     }
-    
-    return resultUrl;
+
+    return fixedUrl;
 }
 
 /**
@@ -66,32 +74,34 @@ async function createWithDeepImg(prompt, style, size) {
 async function handlePresetSelection(sock, msg, body, waitState) {
     const sender = msg.key.remoteJid;
     const selectedPresetId = body;
-    const { prompt } = waitState.dataTambahan; // Ambil prompt yang disimpan
+    const { prompt } = waitState.dataTambahan;
 
     const config = presets[selectedPresetId];
     if (!config) {
-        return sock.sendMessage(sender, { text: "Pilihan preset tidak valid." }, { quoted: msg });
+        return sock.sendMessage(sender, { text: "❌ Pilihan preset tidak valid." }, { quoted: msg });
     }
 
     let processingMsg;
     try {
-        processingMsg = await sock.sendMessage(sender, { text: `✅ Preset "${config.title}" dipilih. AI sedang menggambar imajinasimu... Ini mungkin butuh satu menit.` }, { quoted: msg });
+        processingMsg = await sock.sendMessage(sender, { text: `✅ Preset "${config.title}" dipilih.\nAI sedang menggambar imajinasimu... Mohon tunggu 30-60 detik.` }, { quoted: msg });
 
         const resultUrl = await createWithDeepImg(prompt, config.style, config.size);
 
         const caption = `✅ Selesai! Ini hasil dari imajinasimu:\n\n*"${prompt}"*\n\n*Gaya*: ${config.title}`;
-        await sock.sendMessage(sender, { image: { url: resultUrl }, caption: caption }, { quoted: msg });
+        await sock.sendMessage(sender, { image: { url: resultUrl }, caption }, { quoted: msg });
 
         if (processingMsg) await sock.sendMessage(sender, { delete: processingMsg.key });
 
     } catch (error) {
-        console.error('[DEEPIMG] Gagal saat handlePresetSelection:', error);
-        await sock.sendMessage(sender, { text: `❌ Aduh, AI-nya lagi pusing: ${error.message}` }, { quoted: msg });
+        console.error('[DEEPIMG] Gagal saat handlePresetSelection:', error.stack);
+        await sock.sendMessage(sender, { text: `❌ Aduh, AI-nya lagi error: ${error.message}` }, { quoted: msg });
         if (processingMsg) await sock.sendMessage(sender, { delete: processingMsg.key });
     }
 }
 
-
+/**
+ * Fungsi utama untuk memproses perintah deepimg dari user.
+ */
 export default async function execute(sock, msg, args, text, sender, extras) {
     const { set: setWaitingState } = extras;
     const userPrompt = text.trim();
@@ -120,15 +130,14 @@ export default async function execute(sock, msg, args, text, sender, extras) {
             sections
         }, { quoted: msg });
 
-        // Set wait state untuk menunggu pilihan pengguna
-        // Simpan prompt agar bisa digunakan di langkah selanjutnya
+        // Simpan prompt di wait state untuk nanti digunakan
         await setWaitingState(sender, 'deepimg', handlePresetSelection, {
             dataTambahan: { prompt: userPrompt },
-            timeout: 120000 
+            timeout: 120000
         });
 
     } catch (error) {
-        console.error('[DEEPIMG] Gagal pada tahap awal:', error);
-        await sock.sendMessage(sender, { text: `❌ Aduh, gagal menyiapkan perintah: ${error.message}` }, { quoted: msg });
+        console.error('[DEEPIMG] Gagal pada tahap awal:', error.stack);
+        await sock.sendMessage(sender, { text: `❌ Gagal menyiapkan generator: ${error.message}` }, { quoted: msg });
     }
 }
