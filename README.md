@@ -1,7 +1,7 @@
 # 🤖✨ SzyrineBotsID | Bot WA Sultan Spek Dewa ✨🤖
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Smdzyz/Szyrinebot/main/file_00000000d88061f98cada20d0fe2294e.png" alt="SzyrineBotsID Banner" width="600"/>
+  <img src="https://github.com/Smdxyz/Szyrinebot/blob/0540bc9d9d7a9132a49b15061fa91786cd5b6493/file_00000000d88061f98cada20d0fe2294e.png" alt="SzyrineBotsID Banner" width="600"/>
 </p>
 
 <p align="center">
