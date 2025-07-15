@@ -2,19 +2,16 @@
 
 import { BOT_PREFIX } from '../../config.js';
 import { safeApiGet } from '../../libs/apiHelper.js';
-// Tidak perlu uploader, karena ini murni dari teks
 
 export const category = 'ai';
 export const description = 'Membuat gambar dari deskripsi teks menggunakan AI (DeepImg).';
 export const usage = `Ketik ${BOT_PREFIX}deepimg <deskripsi gambar>\n\nContoh: ${BOT_PREFIX}deepimg kucing astronot di bulan`;
 
-// --- PRESET GAYA & UKURAN (SUDAH DISESUAIKAN DENGAN API) ---
 const presets = {
     anime_square: {
         style: 'anime', size: '1:1',
         title: 'Anime (Persegi 1:1)', description: 'Gambar gaya anime, cocok untuk foto profil.'
     },
-    // 'photorealistic' diganti dengan 'portrait' yang didukung API
     portrait_square: {
         style: 'portrait', size: '1:1',
         title: 'Realistis (Persegi 1:1)', description: 'Foto potret realistis, bagus untuk profil.'
@@ -23,17 +20,14 @@ const presets = {
         style: 'anime', size: '2:3',
         title: 'Anime (Potrait 2:3)', description: 'Gambar anime tinggi, cocok untuk wallpaper HP.'
     },
-    // 'photorealistic' diganti dengan 'portrait'
     portrait_tall: {
         style: 'portrait', size: '2:3',
         title: 'Realistis (Potrait 2:3)', description: 'Foto potret tinggi, untuk story atau wallpaper.'
     },
-    // Menambahkan style 'cyberpunk' dari dokumentasi
     cyberpunk_wide: {
         style: 'cyberpunk', size: '3:2',
         title: 'Cyberpunk (Landscape 3:2)', description: 'Gambar gaya cyberpunk lebar, untuk wallpaper desktop.'
     },
-    // Mengganti 'photorealistic' dengan 'portrait'
     portrait_wide: {
         style: 'portrait', size: '3:2',
         title: 'Realistis (Landscape 3:2)', description: 'Foto potret lebar, untuk thumbnail atau wallpaper.'
@@ -42,7 +36,7 @@ const presets = {
 
 /**
  * (LOKAL) Fungsi untuk memanggil API DeepImg.
- * --- SUDAH DIPERBAIKI ---
+ * --- SUDAH DIPERBAIKI (LEBIH FLEKSIBEL) ---
  */
 async function createWithDeepImg(prompt, style, size) {
     console.log(`[DEEPIMG] Calling API. Style: ${style}, Size: ${size}, Prompt: ${prompt.substring(0, 50)}...`);
@@ -52,14 +46,18 @@ async function createWithDeepImg(prompt, style, size) {
     
     const response = await safeApiGet(apiUrl);
 
-    // [FIX] Mengakses object 'result' terlebih dahulu sesuai struktur API
-    if (response?.result?.success !== true || !response?.result?.url) {
+    // [FIX v2] Cek kedua kemungkinan format respons API
+    // 1. Cek format nested: response.result.url
+    // 2. Jika tidak ada, cek format flat: response.url
+    const resultUrl = response?.result?.url || response?.url;
+    const isSuccess = response?.result?.success === true || response?.success === true;
+
+    if (!isSuccess || !resultUrl) {
         console.error('[DEEPIMG] Invalid API Response:', response);
         throw new Error('Gagal membuat gambar, respons API tidak valid atau tidak berisi URL hasil.');
     }
     
-    // [FIX] Mengembalikan URL dari dalam object 'result'
-    return response.result.url;
+    return resultUrl;
 }
 
 /**
