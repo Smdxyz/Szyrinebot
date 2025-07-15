@@ -1,7 +1,7 @@
 # 🤖✨ SzyrineBotsID | Bot WA Sultan Spek Dewa ✨🤖
 
 <p align="center">
-  <img src="https://github.com/Smdxyz/Szyrinebot/blob/0540bc9d9d7a9132a49b15061fa91786cd5b6493/file_00000000d88061f98cada20d0fe2294e.png" alt="SzyrineBotsID Banner" width="600"/>
+  <img src="https://github.com/Smdxyz/Szyrinebot/raw/main/animestyle_szyrine.gif" alt="SzyrineBotsID Banner" width="600"/>
 </p>
 
 <p align="center">
@@ -48,7 +48,7 @@ Lo cuma butuh dikit niat sama koneksi internet.
 
 1.  **Clone Dulu Reponya, Bray:**
     ```bash
-    git clone https://github.com/Smdzyz/Szyrinebot.git
+    git clone https://github.com/Smdxyz/Szyrinebot.git
     cd Szyrinebot
     ```
 
@@ -80,48 +80,48 @@ Lo cuma butuh dikit niat sama koneksi internet.
 Ini contekan command-nya, biar lo gak bingung.
 
 ╭─「 **MAIN MENU** 」
-│ ◦ `.confess`   - Ngirim menfess rahasia 🤫
-│ ◦ `.balas`     - Balesin menfess orang 💬
-│ ◦ `.menu`      - Nampilin menu ini lagi (kalo lo lupa) 📜
-│ ◦ `.redeem`    - Tuker kode, dapet hadiah! 🎁
+│ ◦ `.confess`   - Ngirim menfess rahasia 🤫  
+│ ◦ `.balas`     - Balesin menfess orang 💬  
+│ ◦ `.menu`      - Nampilin menu ini lagi (kalo lo lupa) 📜  
+│ ◦ `.redeem`    - Tuker kode, dapet hadiah! 🎁  
 ╰═════════════
 
 ╭─「 **KHUSUS OWNER** 」
-│ ◦ `.api`       - Ngatur API (buat yg ngerti aja) 🔑
-│ ◦ `.delete`    - Hapus pesan bot yg nyampah 🚮
-│ ◦ `.update`    - Update command dari surga (GitHub) 🔄
+│ ◦ `.api`       - Ngatur API (buat yg ngerti aja) 🔑  
+│ ◦ `.delete`    - Hapus pesan bot yg nyampah 🚮  
+│ ◦ `.update`    - Update command dari surga (GitHub) 🔄  
 ╰═════════════
 
 ╭─「 **DUNIA PER-AI-AN** 」
-│ ◦ `.aira`      - Curhat sama Aira, si cewek AI 🌸
-│ ◦ `.blackbox` - Nanya soal coding, auto dijawab 💻
-│ ◦ `.deepimg`   - Bikin gambar dari khayalan lo 🎨
-│ ◦ `.gpt4`      - Nanya apa aja ke mbah GPT-4 🧠
+│ ◦ `.aira`      - Curhat sama Aira, si cewek AI 🌸  
+│ ◦ `.blackbox`  - Nanya soal coding, auto dijawab 💻  
+│ ◦ `.deepimg`   - Bikin gambar dari khayalan lo 🎨  
+│ ◦ `.gpt4`      - Nanya apa aja ke mbah GPT-4 🧠  
 ╰═════════════
 
 ╭─「 **JADI KREATOR** 」
-│ ◦ `.sticker`   - Bikin stiker dari gambar/gif 🖼️
+│ ◦ `.sticker`   - Bikin stiker dari gambar/gif 🖼️  
 ╰═════════════
 
 ╭─「 **ZONA DOWNLOAD** 」
-│ ◦ `.fb`, `.igdl`, `.tiktok`, `.ytmp3`, `.ytmp4`... (dan masih banyak lagi!) 📥
+│ ◦ `.fb`, `.igdl`, `.tiktok`, `.ytmp3`, `.ytmp4`... (dan masih banyak lagi!) 📥  
 ╰═════════════
 
 ╭─「 **ANAK MUSIK** 」
-│ ◦ `.play`      - Cari & puter lagu dari YouTube 🎶
-│ ◦ `.playspo`   - Puter lagu dari Spotify (soon) 🎧
+│ ◦ `.play`      - Cari & puter lagu dari YouTube 🎶  
+│ ◦ `.playspo`   - Puter lagu dari Spotify (soon) 🎧  
 ╰═════════════
 
 ╭─「 **SALON FOTO** 」
-│ ◦ `.remini`, `.upscale` - Bikin foto burik jadi HD ✨
-│ ◦ `.removebg`  - Hapus background foto, auto rapih ✂️
+│ ◦ `.remini`, `.upscale` - Bikin foto burik jadi HD ✨  
+│ ◦ `.removebg`  - Hapus background foto, auto rapih ✂️  
 ╰═════════════
 
 ╭─「 **TOOLS GABUT** 」
-│ ◦ `.igstalk`   - Kepoin mantan di IG 🕵️
-│ ◦ `.ttstalk`   - Kepoin gebetan di TikTok 💃
-│ ◦ `.ssweb`     - Screenshot website, buat bukti 📸
-│ ◦ `.translapp` - Biar lo bisa ngobrol sama bule 🌐
+│ ◦ `.igstalk`   - Kepoin mantan di IG 🕵️  
+│ ◦ `.ttstalk`   - Kepoin gebetan di TikTok 💃  
+│ ◦ `.ssweb`     - Screenshot website, buat bukti 📸  
+│ ◦ `.translapp` - Biar lo bisa ngobrol sama bule 🌐  
 ╰═════════════
 
 ---
