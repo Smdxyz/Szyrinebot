@@ -1,4 +1,4 @@
-// /libs/apiUploader.js (VERSI PERBAIKAN)
+// /libs/apiUploader.js (VERSI BARU - MENGGUNAKAN API DARI SCREENSHOT)
 
 import axios from 'axios';
 import FormData from 'form-data';
@@ -7,44 +7,47 @@ import FormData from 'form-data';
  * MENGGUNAKAN NAMA LAMA: uploadToSzyrine
  * FUNGSI INI TETAP DIPANGGIL OLEH SEMUA COMMAND SEPERTI BIASA.
  * 
- * Tapi secara internal, fungsi ini akan mengunggah ke CloudkuImages.
+ * Secara internal, fungsi ini akan mengunggah file ke endpoint /api/fileHost/upload
+ * sesuai dengan dokumentasi yang diberikan.
  * 
  * @param {Buffer} fileBuffer - Data file dalam bentuk Buffer.
  * @returns {Promise<string>} Sebuah Promise yang resolve dengan direct link ke file.
  * @throws {Error} Akan melempar error jika upload gagal.
  */
 export async function uploadToSzyrine(fileBuffer) {
-    console.log('[API UPLOADER] Memulai proses upload ke CloudkuImages (via legacy call)...');
+    console.log('[API UPLOADER] Memulai proses upload ke Szyrine File Host...');
     
-    const fileName = 'upload.jpg'; // Nama file default
     const form = new FormData();
-    form.append('file', fileBuffer, fileName);
-    form.append('filename', fileName);
+    // Sesuai dokumentasi, parameter file harus ada.
+    form.append('file', fileBuffer, 'upload.jpg'); 
+    // Sesuai dokumentasi, ada parameter opsional 'expiry'. Kita set default ke 1 jam.
+    form.append('expiry', '1h');
 
     try {
         const response = await axios.post(
-            'https://cloudkuimages.guru/upload.php',
+            'https://szyrineapi.biz.id/api/fileHost/upload',
             form,
             {
-                headers: { ...form.getHeaders() },
-                timeout: 35000
+                headers: {
+                    ...form.getHeaders(),
+                },
+                timeout: 35000 // Timeout 35 detik
             }
         );
 
         const data = response.data;
 
-        // --- BAGIAN YANG DIPERBAIKI ---
-        // Kita sekarang memeriksa di 'data.data.url' bukan 'data.result.url'
-        if (data.status !== 'success' || !data.data?.url) {
+        // Berdasarkan dokumentasi, hasil link ada di dalam `result.directLink`
+        if (data.status !== 'success' || !data.result?.directLink) {
             console.error('[API UPLOADER] Gagal upload, respons API tidak valid:', data);
             throw new Error(data.message || 'Gagal mengunggah file, respons API tidak sesuai.');
         }
 
-        console.log('[API UPLOADER] Upload berhasil! Link:', data.data.url);
+        const directLink = data.result.directLink;
+        console.log('[API UPLOADER] Upload berhasil! Link:', directLink);
         
-        // --- BAGIAN YANG DIPERBAIKI ---
-        // Kita juga mengembalikan dari 'data.data.url'
-        return data.data.url;
+        // Mengembalikan directLink sesuai yang diharapkan command lain.
+        return directLink;
 
     } catch (error) {
         console.error('[API UPLOADER] Terjadi error saat upload:', error);
