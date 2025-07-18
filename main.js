@@ -1,4 +1,4 @@
-// main.js (Revised for stability)
+// main.js (Versi dengan Shutdown Langsung dan Cepat)
 
 import 'dotenv/config';
 import process from 'process';
@@ -7,30 +7,41 @@ import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
 
-import { startSzyrineBot } from './core/connection.js';
+// Impor fungsi inti
+import { startBot } from './core/connection.js'; // initiateShutdown tidak kita gunakan lagi dari sini
+import { handler } from './core/handler.js';
+import { handleIncomingCall } from './core/callHandler.js';
 import { loadCommands } from './core/commandRegistry.js';
 
 const require = createRequire(import.meta.url);
 const commandExists = require('command-exists');
 
-// Fungsi ini tidak banyak berubah, tetap untuk shutdown yang bersih
-const setupExitHandlers = (shutdownHandler) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    
-    const handleExit = (signal) => {
-        console.log(`\n[MAIN] Sinyal ${signal} diterima. Memulai shutdown...`);
-        rl.close();
-        if (shutdownHandler) {
-            shutdownHandler(signal);
-        } else {
-            process.exit(0);
-        }
-    };
-    
-    process.on('SIGINT', () => handleExit('SIGINT'));
-    process.on('SIGTERM', () => handleExit('SIGTERM'));
+// --- KONTROL SHUTDOWN YANG LANGSUNG DAN EFISIEN ---
+// Saat CTRL+C (SIGINT) ditekan, tampilkan pesan dan langsung matikan proses.
+process.on('SIGINT', () => {
+    console.log('\n[MAIN] Sinyal SIGINT diterima. Memaksa keluar...');
+    process.exit(0); // Langsung matikan proses, tidak ada penundaan.
+});
 
-    return rl;
+// Lakukan hal yang sama untuk sinyal TERM (biasa digunakan oleh manajer proses)
+process.on('SIGTERM', () => {
+    console.log('\n[MAIN] Sinyal SIGTERM diterima. Memaksa keluar...');
+    process.exit(0);
+});
+// ----------------------------------------------------
+
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+});
+
+const question = (text) => {
+    return new Promise((resolve) => {
+        rl.question(text, (answer) => {
+            // Jangan tutup rl di sini agar tidak error jika user menekan CTRL+C saat bertanya
+            resolve(answer.trim().toLowerCase());
+        });
+    });
 };
 
 async function checkDependencies() {
@@ -45,10 +56,6 @@ async function checkDependencies() {
 }
 
 async function main() {
-    // Fungsi shutdown dideklarasikan di sini tapi akan diisi oleh connection.js
-    let shutdownBot; 
-    const rl = setupExitHandlers(() => shutdownBot ? shutdownBot('SIGINT') : process.exit(0));
-
     try {
         console.log("🚀 [MAIN] Memulai SzyrineBot...");
 
@@ -56,27 +63,38 @@ async function main() {
         await checkDependencies();
         await loadCommands();
         console.log("[MAIN] Persiapan internal selesai.\n");
-        
+
         console.log("--- TAHAP 2: AUTENTIKASI & KONEKSI ---");
-        // Fungsi startSzyrineBot sekarang akan menangani semuanya, termasuk pairing
-        const { initiateShutdown } = await startSzyrineBot({
-            // Teruskan fungsi question jika diperlukan untuk pairing
-            question: (text) => new Promise(resolve => rl.question(text, resolve)),
-        });
+        const authFolderPath = path.resolve('session');
+        const sessionExists = fs.existsSync(authFolderPath);
+        let loginMode = null;
 
-        // Simpan fungsi shutdown yang dikembalikan dari connection.js
-        shutdownBot = initiateShutdown;
+        if (!sessionExists) {
+            console.log("[AUTH] Folder sesi tidak ditemukan.");
+            const choice = await question("Pilih Mode Pairing: [1] Otomatis | [2] Manual: ");
+            if (choice === '1') loginMode = 'auto';
+            else if (choice === '2') loginMode = 'manual';
+            else {
+                console.log("Pilihan tidak valid, keluar.");
+                process.exit(1); // Langsung keluar jika input salah
+            }
+        }
+        
+        rl.close(); // Tutup readline setelah selesai digunakan
 
-        // Setelah pairing (jika ada) selesai, readline bisa ditutup
-        rl.close();
+        console.log("[MAIN] Memulai koneksi bot...");
+        const activeSock = await startBot(loginMode);
+
+        console.log("[MAIN] Memasang event handler untuk pesan dan panggilan...");
+        activeSock.ev.on('messages.upsert', (m) => handler(activeSock, m));
+        activeSock.ev.on('call', (calls) => handleIncomingCall(activeSock, calls));
         
         console.log("✅ [MAIN] Bot siap menerima perintah!");
         console.log("--- BOT FULLY OPERATIONAL ---");
 
     } catch (err) {
         console.error("❌ [FATAL] Gagal total saat memulai bot:", err);
-        rl.close();
-        process.exit(1);
+        process.exit(1); // Jika ada error saat startup, langsung matikan
     }
 }
 
