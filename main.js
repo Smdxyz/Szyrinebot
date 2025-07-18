@@ -7,8 +7,8 @@ import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
 
-// Impor fungsi inti
-import { startBot } from './core/connection.js'; // initiateShutdown tidak kita gunakan lagi dari sini
+// Impor sekarang akan berhasil
+import { startBot } from './core/connection.js'; 
 import { handler } from './core/handler.js';
 import { handleIncomingCall } from './core/callHandler.js';
 import { loadCommands } from './core/commandRegistry.js';
@@ -17,13 +17,11 @@ const require = createRequire(import.meta.url);
 const commandExists = require('command-exists');
 
 // --- KONTROL SHUTDOWN YANG LANGSUNG DAN EFISIEN ---
-// Saat CTRL+C (SIGINT) ditekan, tampilkan pesan dan langsung matikan proses.
 process.on('SIGINT', () => {
     console.log('\n[MAIN] Sinyal SIGINT diterima. Memaksa keluar...');
-    process.exit(0); // Langsung matikan proses, tidak ada penundaan.
+    process.exit(0);
 });
 
-// Lakukan hal yang sama untuk sinyal TERM (biasa digunakan oleh manajer proses)
 process.on('SIGTERM', () => {
     console.log('\n[MAIN] Sinyal SIGTERM diterima. Memaksa keluar...');
     process.exit(0);
@@ -38,7 +36,6 @@ const rl = readline.createInterface({
 const question = (text) => {
     return new Promise((resolve) => {
         rl.question(text, (answer) => {
-            // Jangan tutup rl di sini agar tidak error jika user menekan CTRL+C saat bertanya
             resolve(answer.trim().toLowerCase());
         });
     });
@@ -76,11 +73,11 @@ async function main() {
             else if (choice === '2') loginMode = 'manual';
             else {
                 console.log("Pilihan tidak valid, keluar.");
-                process.exit(1); // Langsung keluar jika input salah
+                process.exit(1);
             }
         }
         
-        rl.close(); // Tutup readline setelah selesai digunakan
+        rl.close();
 
         console.log("[MAIN] Memulai koneksi bot...");
         const activeSock = await startBot(loginMode);
@@ -94,7 +91,7 @@ async function main() {
 
     } catch (err) {
         console.error("❌ [FATAL] Gagal total saat memulai bot:", err);
-        process.exit(1); // Jika ada error saat startup, langsung matikan
+        process.exit(1);
     }
 }
 
