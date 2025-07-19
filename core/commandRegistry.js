@@ -1,4 +1,4 @@
-// core/commandRegistry.js (REVISED & SIMPLIFIED)
+// core/commandRegistry.js (FIXED with getCommandNames export)
 import { readdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,7 +13,6 @@ let commandMap = new Map();
 
 /**
  * Memuat atau memuat ulang semua command dari direktori /modules.
- * Ini adalah satu-satunya sumber kebenaran (source of truth).
  */
 export async function loadCommands() {
     console.log('🔍 Memulai pemindaian ulang daftar command...');
@@ -32,7 +31,6 @@ export async function loadCommands() {
                 const commandName = file.replace('.js', '').toLowerCase(); 
                 const filePath = path.join(categoryPath, file);
                 try {
-                    // Cache-buster penting untuk memastikan file versi baru yang di-import
                     const moduleURL = `file://${filePath.replace(/\\/g, '/')}?t=${Date.now()}`;
                     const commandModule = await import(moduleURL);
 
@@ -48,7 +46,6 @@ export async function loadCommands() {
                             filePath: filePath,
                             execute: commandModule.default,
                         };
-
                         tempCommandMap.set(commandName, cmdData);
                         cmdData.aliases.forEach(alias => tempCommandMap.set(alias, cmdData));
                     }
@@ -63,12 +60,9 @@ export async function loadCommands() {
 
     commandMap = tempCommandMap;
     
-    // Membangun ulang daftar menu dari commandMap yang sudah bersih
     const tempCommandDataByCategory = {};
     for (const cmd of commandMap.values()) {
-        // Hindari duplikasi karena alias
         if (cmd.name !== [...commandMap.keys()].find(key => commandMap.get(key) === cmd)) continue;
-
         if (!tempCommandDataByCategory[cmd.category]) {
             tempCommandDataByCategory[cmd.category] = [];
         }
@@ -82,14 +76,23 @@ export async function loadCommands() {
     console.log(`[CMD REGISTRY] ✅ Pemuatan selesai. Total ${[...new Set(commandMap.values())].length} command unik dimuat.`);
 }
 
-// --- FUNGSI GETTER (Tidak berubah) ---
+// --- FUNGSI GETTER ---
 export function getCategorizedCommands() { return registeredCommands; }
 export function getCommand(commandName) { return commandMap.get(commandName.toLowerCase()); }
 
 /**
- * (REVISED) Memuat ulang command.
- * Cara paling andal adalah dengan menjalankan ulang seluruh proses load.
+ * (INI FUNGSI YANG BARU DITAMBAHKAN DAN DIEKSPOR)
+ * Mengambil daftar nama command yang unik (tidak termasuk alias).
  */
+export function getCommandNames() {
+    // Gunakan Set untuk mendapatkan objek command yang unik (menghilangkan duplikasi dari alias)
+    const uniqueCommands = new Set(commandMap.values());
+    // Ubah Set menjadi array dari nama command
+    return Array.from(uniqueCommands, cmd => cmd.name);
+}
+
+
+// --- FUNGSI HOT-RELOAD & UNLOAD ---
 export async function reloadCommand(filePath) {
     console.log(`[CMD REGISTRY] 🚀 Memulai hot-reload untuk: ${path.basename(filePath)}`);
     try {
@@ -101,10 +104,6 @@ export async function reloadCommand(filePath) {
     }
 }
 
-/**
- * (REVISED) Mengeluarkan command.
- * File fisik sudah dihapus oleh command 'delete', kita hanya perlu memuat ulang state.
- */
 export async function unloadCommand(filePath) {
     console.log(`[CMD REGISTRY] 🗑️ Memulai hot-unload untuk: ${path.basename(filePath)}`);
     try {
