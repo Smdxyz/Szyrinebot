@@ -1,5 +1,5 @@
-// core/commandRegistry.js (Final Version with Reload & Unload)
-import { readdirSync, statSync } from 'fs';
+// core/commandRegistry.js (REVISED & SIMPLIFIED)
+import { readdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { BOT_PREFIX } from '../config.js';
@@ -11,10 +11,12 @@ const modulesDir = path.join(__dirname, '../modules');
 let registeredCommands = [];
 let commandMap = new Map();
 
-// --- FUNGSI LOAD UTAMA (TETAP SAMA) ---
+/**
+ * Memuat atau memuat ulang semua command dari direktori /modules.
+ * Ini adalah satu-satunya sumber kebenaran (source of truth).
+ */
 export async function loadCommands() {
     console.log('🔍 Memulai pemindaian ulang daftar command...');
-    const tempCommandDataByCategory = {}; 
     const tempCommandMap = new Map();     
 
     try {
@@ -30,6 +32,7 @@ export async function loadCommands() {
                 const commandName = file.replace('.js', '').toLowerCase(); 
                 const filePath = path.join(categoryPath, file);
                 try {
+                    // Cache-buster penting untuk memastikan file versi baru yang di-import
                     const moduleURL = `file://${filePath.replace(/\\/g, '/')}?t=${Date.now()}`;
                     const commandModule = await import(moduleURL);
 
@@ -47,14 +50,7 @@ export async function loadCommands() {
                         };
 
                         tempCommandMap.set(commandName, cmdData);
-                        for (const alias of cmdData.aliases) {
-                             tempCommandMap.set(alias, cmdData);
-                        }
-
-                        if (!tempCommandDataByCategory[cmdData.category]) {
-                            tempCommandDataByCategory[cmdData.category] = [];
-                        }
-                        tempCommandDataByCategory[cmdData.category].push(cmdData);
+                        cmdData.aliases.forEach(alias => tempCommandMap.set(alias, cmdData));
                     }
                 } catch (error) {
                     console.error(`[CMD REGISTRY] ❌ Gagal memuat command '${filePath}':`, error);
@@ -66,88 +62,56 @@ export async function loadCommands() {
     }
 
     commandMap = tempCommandMap;
+    
+    // Membangun ulang daftar menu dari commandMap yang sudah bersih
+    const tempCommandDataByCategory = {};
+    for (const cmd of commandMap.values()) {
+        // Hindari duplikasi karena alias
+        if (cmd.name !== [...commandMap.keys()].find(key => commandMap.get(key) === cmd)) continue;
+
+        if (!tempCommandDataByCategory[cmd.category]) {
+            tempCommandDataByCategory[cmd.category] = [];
+        }
+        tempCommandDataByCategory[cmd.category].push(cmd);
+    }
+    
     registeredCommands = Object.entries(tempCommandDataByCategory)
         .map(([category, commands]) => ({ category, commands }))
         .filter(cat => cat.commands.length > 0); 
 
-    console.log(`[CMD REGISTRY] ✅ Pemuatan selesai. Total ${commandMap.size} command (termasuk alias) dimuat.`);
+    console.log(`[CMD REGISTRY] ✅ Pemuatan selesai. Total ${[...new Set(commandMap.values())].length} command unik dimuat.`);
 }
 
-// --- FUNGSI GETTER (TETAP SAMA) ---
+// --- FUNGSI GETTER (Tidak berubah) ---
 export function getCategorizedCommands() { return registeredCommands; }
 export function getCommand(commandName) { return commandMap.get(commandName.toLowerCase()); }
-export function getCommandNames() {
-    const uniqueCommands = new Map();
-    for (const [key, value] of commandMap.entries()) {
-        if (!uniqueCommands.has(value.name)) { uniqueCommands.set(value.name, value); }
-    }
-    return Array.from(uniqueCommands.keys());
-}
 
-// --- FUNGSI HOT-RELOAD (UNTUK UPDATE) ---
+/**
+ * (REVISED) Memuat ulang command.
+ * Cara paling andal adalah dengan menjalankan ulang seluruh proses load.
+ */
 export async function reloadCommand(filePath) {
-    console.log(`[CMD REGISTRY] 🚀 Memulai hot-reload untuk: ${filePath}`);
+    console.log(`[CMD REGISTRY] 🚀 Memulai hot-reload untuk: ${path.basename(filePath)}`);
     try {
-        const commandName = path.basename(filePath, '.js').toLowerCase();
-        const oldCommandData = commandMap.get(commandName);
-        if (oldCommandData) {
-            commandMap.delete(commandName);
-            if (oldCommandData.aliases) {
-                for (const alias of oldCommandData.aliases) { commandMap.delete(alias); }
-            }
-        }
-        const moduleURL = `file://${filePath.replace(/\\/g, '/')}?t=${Date.now()}`;
-        const commandModule = await import(moduleURL);
-        if (typeof commandModule.default !== 'function') throw new Error(`File tidak memiliki 'export default function'.`);
-        const categoryName = path.basename(path.dirname(filePath));
-        const cmdData = { name: commandName, category: commandModule.category || categoryName, description: commandModule.description || 'Tidak ada deskripsi.', usage: commandModule.usage || `${BOT_PREFIX}${commandName}`, aliases: commandModule.aliases || [], requiredTier: commandModule.requiredTier || null, energyCost: commandModule.energyCost || 0, filePath: filePath, execute: commandModule.default };
-        commandMap.set(cmdData.name, cmdData);
-        for (const alias of cmdData.aliases) { commandMap.set(alias, cmdData); }
-        registeredCommands = registeredCommands.map(cat => {
-            cat.commands = cat.commands.filter(cmd => cmd.name !== commandName);
-            return cat;
-        }).filter(cat => cat.commands.length > 0);
-        let categoryExists = registeredCommands.find(cat => cat.category === cmdData.category);
-        if (categoryExists) { categoryExists.commands.push(cmdData); } 
-        else { registeredCommands.push({ category: cmdData.category, commands: [cmdData] }); }
-        console.log(`[CMD REGISTRY] ✅ Hot-reload berhasil untuk '${cmdData.name}'.`);
-        return { success: true, message: `Command '${cmdData.name}' berhasil di-reload.` };
+        await loadCommands();
+        return { success: true, message: `Command '${path.basename(filePath, '.js')}' berhasil di-reload.` };
     } catch (error) {
-        console.error(`[CMD REGISTRY] ❌ Gagal hot-reload '${filePath}':`, error);
-        await loadCommands(); 
+        console.error(`[CMD REGISTRY] ❌ Gagal saat proses reload:`, error);
         return { success: false, message: `Gagal reload: ${error.message}` };
     }
 }
 
-// --- FUNGSI HOT-UNLOAD (UNTUK DELETE) ---
+/**
+ * (REVISED) Mengeluarkan command.
+ * File fisik sudah dihapus oleh command 'delete', kita hanya perlu memuat ulang state.
+ */
 export async function unloadCommand(filePath) {
-    console.log(`[CMD REGISTRY] 🗑️ Memulai hot-unload untuk: ${filePath}`);
+    console.log(`[CMD REGISTRY] 🗑️ Memulai hot-unload untuk: ${path.basename(filePath)}`);
     try {
-        const commandName = path.basename(filePath, '.js').toLowerCase();
-        const commandData = commandMap.get(commandName);
-
-        if (!commandData) {
-            console.warn(`[CMD REGISTRY] Command '${commandName}' tidak ditemukan di memori. Mungkin sudah dihapus.`);
-            return { success: true, message: "Command tidak ditemukan di memori." };
-        }
-
-        // Hapus nama utama dan semua aliasnya dari map
-        commandMap.delete(commandName);
-        for (const alias of commandData.aliases) {
-            commandMap.delete(alias);
-        }
-
-        // Hapus dari daftar menu (registeredCommands)
-        registeredCommands = registeredCommands.map(cat => {
-            cat.commands = cat.commands.filter(cmd => cmd.name !== commandName);
-            return cat;
-        }).filter(cat => cat.commands.length > 0); // Hapus kategori jika kosong
-
-        console.log(`[CMD REGISTRY] ✅ Hot-unload berhasil untuk '${commandName}'.`);
-        return { success: true, message: `Command '${commandName}' berhasil dikeluarkan.` };
-
+        await loadCommands();
+        return { success: true, message: `Command '${path.basename(filePath, '.js')}' berhasil dikeluarkan.` };
     } catch (error) {
-        console.error(`[CMD REGISTRY] ❌ Gagal saat hot-unload '${filePath}':`, error);
+        console.error(`[CMD REGISTRY] ❌ Gagal saat proses unload:`, error);
         return { success: false, message: `Gagal unload: ${error.message}` };
     }
 }
