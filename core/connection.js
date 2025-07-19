@@ -1,16 +1,12 @@
-// core/connection.js (Versi yang cocok dengan main.js sederhana)
+// core/connection.js (VERSI DIPERBAIKI)
 
 import { makeWASocket, DisconnectReason, useMultiFileAuthState, Browsers, makeCacheableSignalKeyStore } from '@fizzxydev/baileys-pro';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
-import fs from 'fs';
 import path from 'path';
 import process from 'process';
 import readline from 'readline';
 import { BOT_PHONE_NUMBER } from '../config.js';
-
-// Fungsi ini tidak perlu lagi isShuttingDown karena kita pakai process.exit()
-// let isShuttingDown = false; 
 
 const question = (text) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -20,8 +16,8 @@ const question = (text) => {
     }));
 };
 
-// Pastikan fungsi ini diekspor agar bisa diimpor oleh main.js
-export async function startBot(loginMode) {
+// Fungsi ini sekarang lebih sederhana, hanya untuk membuat koneksi.
+export async function createBotConnection(loginMode) {
     const authFolderPath = path.resolve('session');
     const { state, saveCreds } = await useMultiFileAuthState(authFolderPath);
 
@@ -35,6 +31,7 @@ export async function startBot(loginMode) {
         },
     });
 
+    // Handle pairing code logic jika diperlukan
     if (loginMode) {
         let phoneNumber;
         if (loginMode === 'manual') {
@@ -69,32 +66,25 @@ export async function startBot(loginMode) {
         console.log("[AUTH] Sesi ditemukan. Mencoba terhubung...");
     }
 
+    // Tetap pasang listener untuk menyimpan kredensial
     sock.ev.on('creds.update', saveCreds);
 
+    // Listener connection.update di sini HANYA untuk logging.
+    // Logika rekoneksi akan ditangani oleh main.js.
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === 'open') {
             console.log('🎉 [CONNECTION] Koneksi WhatsApp berhasil dibuka!');
             console.log(`[INFO] Terhubung sebagai: ${sock.user?.name || 'Unknown'} (${sock.user?.id.split(':')[0]})`);
-        } else if (connection === 'close') {
-            const statusCode = (lastDisconnect.error instanceof Boom) ? lastDisconnect.error.output?.statusCode : 500;
-            
-            // Logika shutdown sudah dihandle oleh process.on('SIGINT') di main.js
-            // Jadi tidak perlu flag isShuttingDown di sini.
-
-            console.log(`[CONNECTION] Koneksi ditutup! Status: ${statusCode}, Alasan: "${lastDisconnect.error?.message || 'Tidak Diketahui'}".`);
-            if (statusCode !== DisconnectReason.loggedOut) {
-                console.log("[RECONNECT] Mencoba menyambung kembali setelah 5 detik...");
-                // Panggil lagi startBot untuk rekoneksi.
-                setTimeout(() => startBot(null), 5000); 
-            } else {
-                console.error("❌ [FATAL] Logged Out. Hapus folder 'session' dan restart untuk pairing ulang.");
-                process.exit(1); // Keluar jika ter-logout
-            }
         } else if (connection === 'connecting') {
             console.log("⏳ [CONNECTION] Menghubungkan ke WhatsApp...");
+        } else if (connection === 'close') {
+            const statusCode = (lastDisconnect.error instanceof Boom) ? lastDisconnect.error.output?.statusCode : 500;
+            const reason = lastDisconnect.error?.message || 'Tidak Diketahui';
+            console.log(`[CONNECTION] Koneksi ditutup! Status: ${statusCode}, Alasan: "${reason}".`);
+            // Tidak ada logika rekoneksi di sini lagi.
         }
     });
 
-    return sock;
+    return sock; // Kembalikan socket yang dibuat
 }
