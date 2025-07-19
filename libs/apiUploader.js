@@ -1,4 +1,4 @@
-// /libs/apiUploader.js (VERSI BARU - MENGGUNAKAN API DARI SCREENSHOT)
+// /libs/apiUploader.js (VERSI DIPERBAIKI)
 
 import axios from 'axios';
 import FormData from 'form-data';
@@ -18,9 +18,7 @@ export async function uploadToSzyrine(fileBuffer) {
     console.log('[API UPLOADER] Memulai proses upload ke Szyrine File Host...');
     
     const form = new FormData();
-    // Sesuai dokumentasi, parameter file harus ada.
     form.append('file', fileBuffer, 'upload.jpg'); 
-    // Sesuai dokumentasi, ada parameter opsional 'expiry'. Kita set default ke 1 jam.
     form.append('expiry', '1h');
 
     try {
@@ -37,10 +35,13 @@ export async function uploadToSzyrine(fileBuffer) {
 
         const data = response.data;
 
-        // Berdasarkan dokumentasi, hasil link ada di dalam `result.directLink`
-        if (data.status !== 'success' || !data.result?.directLink) {
+        // --- PERBAIKAN VALIDASI ---
+        // Pengecekan disesuaikan dengan format respons baru.
+        // Kita cek status code 200, lalu success: true di dalam result, dan pastikan directLink ada.
+        if (data.status !== 200 || data.result?.success !== true || !data.result?.directLink) {
             console.error('[API UPLOADER] Gagal upload, respons API tidak valid:', data);
-            throw new Error(data.message || 'Gagal mengunggah file, respons API tidak sesuai.');
+            // Gunakan message dari API jika ada, jika tidak, gunakan pesan default.
+            throw new Error(data.result?.message || data.message || 'Gagal mengunggah file, respons API tidak sesuai.');
         }
 
         const directLink = data.result.directLink;
@@ -52,7 +53,9 @@ export async function uploadToSzyrine(fileBuffer) {
     } catch (error) {
         console.error('[API UPLOADER] Terjadi error saat upload:', error);
         if (error.response && error.response.data) {
-             throw new Error(`Gagal menghubungi server upload: ${error.response.data.message || error.message}`);
+             // Coba cari pesan error yang lebih spesifik di dalam respons
+             const errorMessage = error.response.data.result?.message || error.response.data.message || error.message;
+             throw new Error(`Gagal menghubungi server upload: ${errorMessage}`);
         }
         throw new Error(`Gagal menghubungi server upload: ${error.message}`);
     }
